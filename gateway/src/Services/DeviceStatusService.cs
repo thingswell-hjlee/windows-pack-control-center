@@ -4,6 +4,7 @@ using ControlCenter.Gateway.Data;
 using ControlCenter.Gateway.Hubs;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace ControlCenter.Gateway.Services;
 
@@ -13,19 +14,21 @@ public class DeviceStatusService : BackgroundService
     private readonly IServiceProvider _serviceProvider;
     private readonly MqttReceiverService _mqttReceiver;
     private readonly IHubContext<EventHub> _hubContext;
+    private readonly MqttSettings _settings;
     private readonly ConcurrentDictionary<string, DateTime> _lastHeartbeat = new();
-    private static readonly TimeSpan HeartbeatTimeout = TimeSpan.FromSeconds(60);
 
     public DeviceStatusService(
         ILogger<DeviceStatusService> logger,
         IServiceProvider serviceProvider,
         MqttReceiverService mqttReceiver,
-        IHubContext<EventHub> hubContext)
+        IHubContext<EventHub> hubContext,
+        IOptions<MqttSettings> mqttSettings)
     {
         _logger = logger;
         _serviceProvider = serviceProvider;
         _mqttReceiver = mqttReceiver;
         _hubContext = hubContext;
+        _settings = mqttSettings.Value;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -104,12 +107,13 @@ public class DeviceStatusService : BackgroundService
         {
             try
             {
-                await Task.Delay(TimeSpan.FromSeconds(15), stoppingToken);
+                await Task.Delay(TimeSpan.FromSeconds(_settings.HeartbeatCheckIntervalSeconds), stoppingToken);
 
                 var now = DateTime.UtcNow;
+                var heartbeatTimeout = TimeSpan.FromSeconds(_settings.HeartbeatTimeoutSeconds);
                 foreach (var (deviceId, lastSeen) in _lastHeartbeat)
                 {
-                    if (now - lastSeen > HeartbeatTimeout)
+                    if (now - lastSeen > heartbeatTimeout)
                     {
                         await UpdateDeviceStatus(deviceId, "offline", stoppingToken);
                         _lastHeartbeat.TryRemove(deviceId, out _);
