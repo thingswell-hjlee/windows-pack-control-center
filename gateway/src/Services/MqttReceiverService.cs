@@ -148,37 +148,54 @@ public class MqttReceiverService : BackgroundService
             if (stoppingToken.IsCancellationRequested)
                 return;
 
-            try
+            // Bounded retry with exponential backoff (max 5 attempts)
+            const int maxRetries = 5;
+            for (int attempt = 1; attempt <= maxRetries; attempt++)
             {
-                await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
-            }
-            catch (OperationCanceledException)
-            {
-                return;
-            }
+                if (stoppingToken.IsCancellationRequested)
+                    return;
 
-            try
-            {
-                using var scope = _serviceProvider.CreateScope();
-                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-                var freshDevice = await db.Devices.FirstOrDefaultAsync(d => d.DeviceId == device.DeviceId);
+                var delaySeconds = Math.Min(5 * Math.Pow(2, attempt - 1), 60);
+                _logger.LogInformation("Reconnect attempt {Attempt}/{MaxRetries} for device {DeviceId} in {Delay}s",
+                    attempt, maxRetries, device.DeviceId, delaySeconds);
 
-                if (freshDevice is null || !freshDevice.Enabled || string.IsNullOrEmpty(freshDevice.MqttHost))
+                try
                 {
-                    _logger.LogInformation("Device {DeviceId} no longer eligible for MQTT connection, skipping reconnect", device.DeviceId);
+                    await Task.Delay(TimeSpan.FromSeconds(delaySeconds), stoppingToken);
+                }
+                catch (OperationCanceledException)
+                {
                     return;
                 }
 
-                await ConnectToDevice(freshDevice, stoppingToken);
+                try
+                {
+                    using var scope = _serviceProvider.CreateScope();
+                    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                    var freshDevice = await db.Devices.FirstOrDefaultAsync(d => d.DeviceId == device.DeviceId, stoppingToken);
+
+                    if (freshDevice is null || !freshDevice.Enabled || string.IsNullOrEmpty(freshDevice.MqttHost))
+                    {
+                        _logger.LogInformation("Device {DeviceId} no longer eligible for MQTT connection, skipping reconnect", device.DeviceId);
+                        return;
+                    }
+
+                    await ConnectToDevice(freshDevice, stoppingToken);
+                    return; // Success - exit retry loop
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Reconnect attempt {Attempt}/{MaxRetries} failed for device {DeviceId}",
+                        attempt, maxRetries, device.DeviceId);
+                }
             }
-            catch (OperationCanceledException)
-            {
-                // Service is stopping, no action needed
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to reconnect to device {DeviceId}", device.DeviceId);
-            }
+
+            _logger.LogError("All {MaxRetries} reconnect attempts exhausted for device {DeviceId}. Will retry on next poll cycle.",
+                maxRetries, device.DeviceId);
         };
 
         var options = optionsBuilder.Build();

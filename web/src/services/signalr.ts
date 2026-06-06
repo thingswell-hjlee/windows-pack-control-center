@@ -12,6 +12,7 @@ export type CameraStatusUpdate = {
 };
 
 let connection: signalR.HubConnection | null = null;
+let subscriberCount = 0;
 
 export function getConnection(): signalR.HubConnection {
   if (!connection) {
@@ -25,6 +26,7 @@ export function getConnection(): signalR.HubConnection {
 }
 
 export async function startConnection(): Promise<void> {
+  subscriberCount++;
   const conn = getConnection();
   if (conn.state === signalR.HubConnectionState.Disconnected) {
     await conn.start();
@@ -32,9 +34,12 @@ export async function startConnection(): Promise<void> {
 }
 
 export async function stopConnection(): Promise<void> {
-  const conn = getConnection();
-  if (conn.state === signalR.HubConnectionState.Connected) {
-    await conn.stop();
+  subscriberCount = Math.max(0, subscriberCount - 1);
+  if (subscriberCount === 0) {
+    const conn = getConnection();
+    if (conn.state === signalR.HubConnectionState.Connected) {
+      await conn.stop();
+    }
   }
 }
 

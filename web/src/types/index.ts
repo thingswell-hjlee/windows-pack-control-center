@@ -8,7 +8,7 @@ export interface Device {
   mqtt_host: string;
   mqtt_port: number;
   mqtt_username: string;
-  mqtt_password: string;
+  mqtt_password?: string;
   event_topic: string;
   status_topic: string;
   enabled: boolean;

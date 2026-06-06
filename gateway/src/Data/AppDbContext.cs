@@ -39,6 +39,7 @@ public class AppDbContext : DbContext
             entity.HasKey(e => e.EventId);
             entity.HasIndex(e => e.DeviceId);
             entity.HasIndex(e => e.Timestamp);
+            entity.HasIndex(e => e.TsMs);
             entity.HasIndex(e => e.EventType);
             entity.HasIndex(e => e.Severity);
             entity.HasIndex(e => e.AckStatus);

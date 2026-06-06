@@ -135,7 +135,7 @@ public static class EventsEndpoints
                 query = query.Where(e => e.TsMs <= endMs);
             }
 
-            var events = await query.OrderByDescending(e => e.TsMs).ToListAsync();
+            var events = await query.OrderByDescending(e => e.TsMs).Take(10_000).ToListAsync();
 
             using var writer = new StringWriter();
             using var csv = new CsvWriter(writer, CultureInfo.InvariantCulture);

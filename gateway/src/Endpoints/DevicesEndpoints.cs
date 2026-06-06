@@ -4,6 +4,48 @@ using Microsoft.EntityFrameworkCore;
 
 namespace ControlCenter.Gateway.Endpoints;
 
+/// <summary>
+/// Response DTO that excludes sensitive credential fields from API responses.
+/// </summary>
+public record DeviceResponse(
+    string DeviceId,
+    string DeviceName,
+    string? SiteId,
+    string? SiteName,
+    string? Location,
+    string? IpAddress,
+    string? MqttHost,
+    int MqttPort,
+    string? MqttUsername,
+    string? EventTopic,
+    string? StatusTopic,
+    bool Enabled,
+    string? Description,
+    DateTime CreatedAt,
+    DateTime UpdatedAt,
+    string Status
+)
+{
+    public static DeviceResponse FromEntity(Device device) => new(
+        device.DeviceId,
+        device.DeviceName,
+        device.SiteId,
+        device.SiteName,
+        device.Location,
+        device.IpAddress,
+        device.MqttHost,
+        device.MqttPort,
+        device.MqttUsername,
+        device.EventTopic,
+        device.StatusTopic,
+        device.Enabled,
+        device.Description,
+        device.CreatedAt,
+        device.UpdatedAt,
+        device.Status
+    );
+}
+
 public static class DevicesEndpoints
 {
     public static void MapDevicesEndpoints(this WebApplication app)
@@ -15,7 +57,7 @@ public static class DevicesEndpoints
             var devices = await db.Devices
                 .OrderByDescending(d => d.CreatedAt)
                 .ToListAsync();
-            return Results.Ok(devices);
+            return Results.Ok(devices.Select(DeviceResponse.FromEntity));
         });
 
         group.MapGet("/{id}", async (string id, AppDbContext db) =>
@@ -23,7 +65,7 @@ public static class DevicesEndpoints
             var device = await db.Devices
                 .Include(d => d.Cameras)
                 .FirstOrDefaultAsync(d => d.DeviceId == id);
-            return device is null ? Results.NotFound() : Results.Ok(device);
+            return device is null ? Results.NotFound() : Results.Ok(DeviceResponse.FromEntity(device));
         });
 
         group.MapPost("/", async (Device device, AppDbContext db) =>
