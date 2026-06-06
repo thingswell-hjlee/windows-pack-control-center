@@ -2,6 +2,22 @@
 
 Windows Pack Control Center를 위한 Inno Setup 기반 Windows 설치 패키지입니다.
 
+## 쉬운 실행 방법 (Batch 파일)
+
+Windows에서 더블클릭으로 모든 과정을 진행할 수 있습니다:
+
+| 순서 | 파일 | 설명 |
+|------|------|------|
+| 1 | `1_build_installer.bat` | 설치파일 빌드 |
+| 2 | `2_run_installer.bat` | 설치 실행 |
+| 3 | `3_check_installed.bat` | 설치 확인 |
+| 4 | `4_open_dashboard.bat` | 대시보드 열기 |
+| 5 | `5_stop_program.bat` | 프로그램 종료 |
+
+자세한 사용법은 `docs/LOCAL_WINDOWS_TEST_GUIDE.ko.md`를 참조하세요.
+
+---
+
 ## Prerequisites (빌드 환경 요구사항)
 
 | Tool | Version | Download |
