@@ -42,6 +42,10 @@ try
         });
     });
 
+    // Configure MQTT settings from appsettings.json
+    builder.Services.Configure<MqttSettings>(
+        builder.Configuration.GetSection(MqttSettings.SectionName));
+
     // Register background services
     builder.Services.AddSingleton<MqttReceiverService>();
     builder.Services.AddHostedService(sp => sp.GetRequiredService<MqttReceiverService>());

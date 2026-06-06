@@ -3,6 +3,7 @@ using System.Threading.Channels;
 using ControlCenter.Gateway.Data;
 using ControlCenter.Gateway.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using MQTTnet;
 using MQTTnet.Client;
 
@@ -19,23 +20,24 @@ public class MqttReceiverService : BackgroundService
 {
     private readonly ILogger<MqttReceiverService> _logger;
     private readonly IServiceProvider _serviceProvider;
+    private readonly MqttSettings _settings;
     private readonly Channel<MqttMessage> _eventChannel;
     private readonly Channel<MqttMessage> _statusChannel;
     private readonly ConcurrentDictionary<string, IMqttClient> _clients = new();
-
-    private const int ChannelCapacity = 10_000;
 
     public ChannelReader<MqttMessage> EventReader => _eventChannel.Reader;
     public ChannelReader<MqttMessage> StatusReader => _statusChannel.Reader;
 
     public MqttReceiverService(
         ILogger<MqttReceiverService> logger,
-        IServiceProvider serviceProvider)
+        IServiceProvider serviceProvider,
+        IOptions<MqttSettings> mqttSettings)
     {
         _logger = logger;
         _serviceProvider = serviceProvider;
+        _settings = mqttSettings.Value;
 
-        var channelOptions = new BoundedChannelOptions(ChannelCapacity)
+        var channelOptions = new BoundedChannelOptions(_settings.ChannelCapacity)
         {
             FullMode = BoundedChannelFullMode.DropOldest,
             SingleReader = true,
@@ -103,8 +105,9 @@ public class MqttReceiverService : BackgroundService
         var client = factory.CreateMqttClient();
 
         var optionsBuilder = new MqttClientOptionsBuilder()
-            .WithTcpServer(device.MqttHost, device.MqttPort)
+            .WithTcpServer(device.MqttHost, device.MqttPort > 0 ? device.MqttPort : _settings.DefaultPort)
             .WithClientId($"control-center-{device.DeviceId}")
+            .WithKeepAlivePeriod(TimeSpan.FromSeconds(_settings.KeepAliveSeconds))
             .WithCleanSession();
 
         if (!string.IsNullOrEmpty(device.MqttUsername))
@@ -126,14 +129,14 @@ public class MqttReceiverService : BackgroundService
 
             if (topic.Contains("/event/"))
             {
-                if (_eventChannel.Reader.Count > ChannelCapacity * 0.9)
-                    _logger.LogWarning("Event channel near capacity ({Count}/{Capacity})", _eventChannel.Reader.Count, ChannelCapacity);
+                if (_eventChannel.Reader.Count > _settings.ChannelCapacity * 0.9)
+                    _logger.LogWarning("Event channel near capacity ({Count}/{Capacity})", _eventChannel.Reader.Count, _settings.ChannelCapacity);
                 await _eventChannel.Writer.WriteAsync(message, stoppingToken);
             }
             else if (topic.Contains("/status/"))
             {
-                if (_statusChannel.Reader.Count > ChannelCapacity * 0.9)
-                    _logger.LogWarning("Status channel near capacity ({Count}/{Capacity})", _statusChannel.Reader.Count, ChannelCapacity);
+                if (_statusChannel.Reader.Count > _settings.ChannelCapacity * 0.9)
+                    _logger.LogWarning("Status channel near capacity ({Count}/{Capacity})", _statusChannel.Reader.Count, _settings.ChannelCapacity);
                 await _statusChannel.Writer.WriteAsync(message, stoppingToken);
             }
 
@@ -150,7 +153,7 @@ public class MqttReceiverService : BackgroundService
 
             try
             {
-                await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+                await Task.Delay(TimeSpan.FromSeconds(_settings.ReconnectDelaySeconds), stoppingToken);
             }
             catch (OperationCanceledException)
             {
