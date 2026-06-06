@@ -3,6 +3,7 @@ using ControlCenter.Gateway.Data;
 using ControlCenter.Gateway.Hubs;
 using ControlCenter.Gateway.Models;
 using CsvHelper;
+using MiniExcelLibs;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 
@@ -16,6 +17,7 @@ public static class EventsEndpoints
 
         group.MapGet("/", async (
             string? device_id,
+            string? camera_id,
             string? event_type,
             string? severity,
             string? ack_status,
@@ -29,6 +31,9 @@ public static class EventsEndpoints
 
             if (!string.IsNullOrEmpty(device_id))
                 query = query.Where(e => e.DeviceId == device_id);
+
+            if (!string.IsNullOrEmpty(camera_id))
+                query = query.Where(e => e.CameraId == camera_id);
 
             if (!string.IsNullOrEmpty(event_type))
                 query = query.Where(e => e.EventType == event_type);
@@ -126,6 +131,7 @@ public static class EventsEndpoints
 
         group.MapGet("/export/csv", async (
             string? device_id,
+            string? camera_id,
             string? event_type,
             string? severity,
             string? ack_status,
@@ -137,6 +143,9 @@ public static class EventsEndpoints
 
             if (!string.IsNullOrEmpty(device_id))
                 query = query.Where(e => e.DeviceId == device_id);
+
+            if (!string.IsNullOrEmpty(camera_id))
+                query = query.Where(e => e.CameraId == camera_id);
 
             if (!string.IsNullOrEmpty(event_type))
                 query = query.Where(e => e.EventType == event_type);
