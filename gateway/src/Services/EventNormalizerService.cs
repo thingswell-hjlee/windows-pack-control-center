@@ -66,7 +66,7 @@ public class EventNormalizerService : BackgroundService
         var deviceId = message.DeviceId;
         var eventType = GetJsonString(root, "event_type") ?? "UNKNOWN_EVENT";
         var tsMs = GetJsonLong(root, "ts_ms") ?? DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        var cameraId = GetJsonInt(root, "camera_id") ?? 0;
+        var cameraId = GetJsonString(root, "camera_id") ?? GetJsonInt(root, "camera_id")?.ToString() ?? string.Empty;
         var trackId = GetJsonInt(root, "track_id") ?? 0;
 
         var eventId = $"{deviceId}-{tsMs}-{eventType}-{cameraId}-{trackId}";
