@@ -180,6 +180,70 @@ public static class EventsEndpoints
                 "text/csv",
                 "events_export.csv");
         });
+
+        group.MapGet("/export/excel", async (
+            string? device_id,
+            string? camera_id,
+            string? event_type,
+            string? severity,
+            string? ack_status,
+            string? start_date,
+            string? end_date,
+            AppDbContext db) =>
+        {
+            var query = db.Events.AsQueryable();
+
+            if (!string.IsNullOrEmpty(device_id))
+                query = query.Where(e => e.DeviceId == device_id);
+            if (!string.IsNullOrEmpty(camera_id))
+                query = query.Where(e => e.CameraId == camera_id);
+            if (!string.IsNullOrEmpty(event_type))
+                query = query.Where(e => e.EventType == event_type);
+            if (!string.IsNullOrEmpty(severity))
+                query = query.Where(e => e.Severity == severity);
+            if (!string.IsNullOrEmpty(ack_status))
+                query = query.Where(e => e.AckStatus == ack_status);
+            if (!string.IsNullOrEmpty(start_date) && DateTime.TryParse(start_date, out var startDt))
+            {
+                var startMs = new DateTimeOffset(startDt.ToUniversalTime()).ToUnixTimeMilliseconds();
+                query = query.Where(e => e.TsMs >= startMs);
+            }
+            if (!string.IsNullOrEmpty(end_date) && DateTime.TryParse(end_date, out var endDt))
+            {
+                var endMs = new DateTimeOffset(endDt.ToUniversalTime()).ToUnixTimeMilliseconds();
+                query = query.Where(e => e.TsMs <= endMs);
+            }
+
+            var events = await query
+                .OrderByDescending(e => e.TsMs)
+                .Take(50000)
+                .Select(e => new
+                {
+                    event_id = e.EventId,
+                    event_type = e.EventType,
+                    severity = e.Severity,
+                    timestamp = e.Timestamp,
+                    device_id = e.DeviceId,
+                    device_name = e.DeviceName,
+                    camera_id = e.CameraId,
+                    camera_name = e.CameraName,
+                    confidence = e.Confidence,
+                    ack_status = e.AckStatus,
+                    ack_user = e.AckUser,
+                    ack_time = e.AckTime,
+                    action_memo = e.ActionMemo
+                })
+                .ToListAsync();
+
+            var stream = new MemoryStream();
+            MiniExcel.SaveAs(stream, events);
+            stream.Position = 0;
+
+            return Results.File(
+                stream,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "events_export.xlsx");
+        });
     }
 }
 
