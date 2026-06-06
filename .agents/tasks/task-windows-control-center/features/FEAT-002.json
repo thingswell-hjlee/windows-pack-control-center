@@ -2,7 +2,7 @@
   "id": "FEAT-002",
   "type": "feat",
   "description": "Create the React/TypeScript frontend (Local Web Dashboard) with all required pages: Dashboard overview, AIBox device monitoring, Camera monitoring, Event timeline, Event detail, Ack/Memo functionality, and CSV/Excel report export. The frontend connects to the gateway REST API and SignalR hub for real-time updates.",
-  "status": "pending",
+  "status": "in_progress",
   "steps": [
     "Initialize React project with Vite in web/ directory: npm create vite@latest . -- --template react-ts",
     "Install dependencies: @microsoft/signalr (SignalR client), react-router-dom (routing), axios (HTTP client), dayjs (date formatting), @tanstack/react-query (data fetching), lucide-react (icons), tailwindcss @tailwindcss/vite (styling)",
