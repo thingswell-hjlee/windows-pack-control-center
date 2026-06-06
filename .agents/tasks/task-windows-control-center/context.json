@@ -1,0 +1,25 @@
+{
+  "project_type": "Windows Local Web Control Center - .NET 8 Gateway + React/TypeScript Dashboard",
+  "language": "C# (.NET 8) for backend, TypeScript for frontend",
+  "build_system": "dotnet CLI for gateway, npm/vite for frontend",
+  "test_framework": "xUnit for .NET, vitest for React",
+  "build_command": "cd gateway && dotnet build; cd ../web && npm run build",
+  "test_command": "cd gateway && dotnet test; cd ../web && npm run build",
+  "verification_instructions": "1. Install .NET 8 SDK, 2. Build gateway with dotnet build, 3. Build frontend with npm install && npm run build, 4. Verify gateway serves on port 8088",
+  "snapshot_or_generated_files": null,
+  "setup_instructions": "wget https://dot.net/v1/dotnet-install.sh -O dotnet-install.sh && chmod +x dotnet-install.sh && ./dotnet-install.sh --channel 8.0 && export DOTNET_ROOT=$HOME/.dotnet && export PATH=$PATH:$DOTNET_ROOT",
+  "environment_constraints": ".NET SDK must be installed manually via dotnet-install.sh. Node.js 22 available via nvm. Full internet access (OPEN_INTERNET).",
+  "contribution_requirements": "Greenfield project - follow the folder structure defined in requirements",
+  "key_patterns": "ASP.NET Core Minimal API pattern, MQTTnet for MQTT, EF Core or Dapper for SQLite, SignalR for real-time, Serilog for logging, React with TypeScript + Vite for frontend",
+  "relevant_files": [
+    "gateway/src/Program.cs",
+    "gateway/src/Models/",
+    "gateway/src/Services/",
+    "gateway/src/Hubs/",
+    "web/src/App.tsx",
+    "web/src/pages/",
+    "web/src/components/",
+    "web/vite.config.ts"
+  ],
+  "directory_structure": "windows-control-center/ with gateway/ (ASP.NET Core), web/ (React+Vite), installer/, docs/, specs/, README.md"
+}

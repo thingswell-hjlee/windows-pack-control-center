@@ -1,0 +1,142 @@
+using System.Globalization;
+using ControlCenter.Gateway.Data;
+using ControlCenter.Gateway.Models;
+using CsvHelper;
+using Microsoft.EntityFrameworkCore;
+
+namespace ControlCenter.Gateway.Endpoints;
+
+public static class EventsEndpoints
+{
+    public static void MapEventsEndpoints(this WebApplication app)
+    {
+        var group = app.MapGroup("/api/events");
+
+        group.MapGet("/", async (
+            string? device_id,
+            string? event_type,
+            string? severity,
+            string? ack_status,
+            string? start_date,
+            string? end_date,
+            int? page,
+            int? page_size,
+            AppDbContext db) =>
+        {
+            var query = db.Events.AsQueryable();
+
+            if (!string.IsNullOrEmpty(device_id))
+                query = query.Where(e => e.DeviceId == device_id);
+
+            if (!string.IsNullOrEmpty(event_type))
+                query = query.Where(e => e.EventType == event_type);
+
+            if (!string.IsNullOrEmpty(severity))
+                query = query.Where(e => e.Severity == severity);
+
+            if (!string.IsNullOrEmpty(ack_status))
+                query = query.Where(e => e.AckStatus == ack_status);
+
+            if (!string.IsNullOrEmpty(start_date) && DateTime.TryParse(start_date, out var startDt))
+                query = query.Where(e => e.Timestamp.CompareTo(startDt.ToString("o")) >= 0);
+
+            if (!string.IsNullOrEmpty(end_date) && DateTime.TryParse(end_date, out var endDt))
+                query = query.Where(e => e.Timestamp.CompareTo(endDt.ToString("o")) <= 0);
+
+            var pageNum = page ?? 1;
+            var pageSize = page_size ?? 50;
+            var total = await query.CountAsync();
+
+            var events = await query
+                .OrderByDescending(e => e.TsMs)
+                .Skip((pageNum - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+
+            return Results.Ok(new
+            {
+                data = events,
+                total,
+                page = pageNum,
+                page_size = pageSize,
+                total_pages = (int)Math.Ceiling((double)total / pageSize)
+            });
+        });
+
+        group.MapGet("/{id}", async (string id, AppDbContext db) =>
+        {
+            var ev = await db.Events.FindAsync(id);
+            return ev is null ? Results.NotFound() : Results.Ok(ev);
+        });
+
+        group.MapPut("/{id}/ack", async (string id, AckRequest request, AppDbContext db) =>
+        {
+            var ev = await db.Events.FindAsync(id);
+            if (ev is null)
+                return Results.NotFound();
+
+            ev.AckStatus = "confirmed";
+            ev.AckUser = request.AckUser;
+            ev.AckTime = DateTime.UtcNow;
+
+            await db.SaveChangesAsync();
+            return Results.Ok(ev);
+        });
+
+        group.MapPut("/{id}/memo", async (string id, MemoRequest request, AppDbContext db) =>
+        {
+            var ev = await db.Events.FindAsync(id);
+            if (ev is null)
+                return Results.NotFound();
+
+            ev.ActionMemo = request.ActionMemo;
+            await db.SaveChangesAsync();
+            return Results.Ok(ev);
+        });
+
+        group.MapGet("/export/csv", async (
+            string? device_id,
+            string? event_type,
+            string? severity,
+            string? ack_status,
+            string? start_date,
+            string? end_date,
+            AppDbContext db) =>
+        {
+            var query = db.Events.AsQueryable();
+
+            if (!string.IsNullOrEmpty(device_id))
+                query = query.Where(e => e.DeviceId == device_id);
+
+            if (!string.IsNullOrEmpty(event_type))
+                query = query.Where(e => e.EventType == event_type);
+
+            if (!string.IsNullOrEmpty(severity))
+                query = query.Where(e => e.Severity == severity);
+
+            if (!string.IsNullOrEmpty(ack_status))
+                query = query.Where(e => e.AckStatus == ack_status);
+
+            if (!string.IsNullOrEmpty(start_date) && DateTime.TryParse(start_date, out var startDt))
+                query = query.Where(e => e.Timestamp.CompareTo(startDt.ToString("o")) >= 0);
+
+            if (!string.IsNullOrEmpty(end_date) && DateTime.TryParse(end_date, out var endDt))
+                query = query.Where(e => e.Timestamp.CompareTo(endDt.ToString("o")) <= 0);
+
+            var events = await query.OrderByDescending(e => e.TsMs).ToListAsync();
+
+            using var writer = new StringWriter();
+            using var csv = new CsvWriter(writer, CultureInfo.InvariantCulture);
+            csv.WriteRecords(events);
+            var content = writer.ToString();
+
+            return Results.File(
+                System.Text.Encoding.UTF8.GetBytes(content),
+                "text/csv",
+                "events_export.csv");
+        });
+    }
+}
+
+public record AckRequest(string AckUser);
+public record MemoRequest(string ActionMemo);

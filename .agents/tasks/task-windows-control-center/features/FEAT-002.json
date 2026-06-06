@@ -1,0 +1,44 @@
+{
+  "id": "FEAT-002",
+  "type": "feat",
+  "description": "Create the React/TypeScript frontend (Local Web Dashboard) with all required pages: Dashboard overview, AIBox device monitoring, Camera monitoring, Event timeline, Event detail, Ack/Memo functionality, and CSV/Excel report export. The frontend connects to the gateway REST API and SignalR hub for real-time updates.",
+  "status": "pending",
+  "steps": [
+    "Initialize React project with Vite in web/ directory: npm create vite@latest . -- --template react-ts",
+    "Install dependencies: @microsoft/signalr (SignalR client), react-router-dom (routing), axios (HTTP client), dayjs (date formatting), @tanstack/react-query (data fetching), lucide-react (icons), tailwindcss @tailwindcss/vite (styling)",
+    "Configure Vite in web/vite.config.ts with: proxy /api and /hubs to http://localhost:8088 for development, build output to ../gateway/src/wwwroot/ for production integration",
+    "Configure Tailwind CSS with tailwind.config.js and add to main CSS file",
+    "Create app layout in web/src/App.tsx with: React Router setup, sidebar navigation (Dashboard, AIBox Devices, Cameras, Events, Reports), main content area, header with connection status indicator",
+    "Create web/src/services/api.ts with axios instance configured for /api base URL, typed request/response interfaces matching all gateway endpoints",
+    "Create web/src/services/signalr.ts with SignalR hub connection to /hubs/events, auto-reconnect logic, event handlers for NewEvent, DeviceStatusChanged, CameraStatusChanged",
+    "Create web/src/pages/Dashboard.tsx: summary cards (total devices, online devices, total cameras, online cameras, unconfirmed events, today's events), recent events list (last 10), device status overview grid",
+    "Create web/src/pages/Devices.tsx: device list table with status indicators (online=green, offline=red, warning=yellow), add device form/modal (all registration fields), edit device, delete device with confirmation",
+    "Create web/src/pages/Cameras.tsx: camera list table with status indicators, grouped by device, add camera form/modal (all registration fields including RTSP URL, ONVIF settings), edit camera, delete camera",
+    "Create web/src/pages/Events.tsx: event timeline/list with: filters (date range, device, camera, event type, severity, ack status), sortable columns, pagination, severity color coding (HIGH=red, MEDIUM=orange, LOW=blue), real-time new event insertion via SignalR, click to view detail",
+    "Create web/src/pages/EventDetail.tsx: full event detail view showing all normalized event fields, snapshot image display (if snapshot_url available), acknowledge button (changes ack_status to confirmed, records ack_user and ack_time), action memo text area with save button, raw payload JSON viewer",
+    "Create web/src/pages/Reports.tsx: date range selector, filter options (device, event type, severity), export to CSV button that calls GET /api/events/export/csv, download handling",
+    "Create shared components in web/src/components/: StatusBadge.tsx (colored badges for device/camera/event status), SeverityBadge.tsx (HIGH/MEDIUM/LOW with colors), EventCard.tsx (compact event display for lists), Pagination.tsx, Modal.tsx, LoadingSpinner.tsx, EmptyState.tsx",
+    "Create web/src/hooks/useSignalR.ts custom hook for managing SignalR connection lifecycle and event subscriptions",
+    "Add proper TypeScript interfaces in web/src/types/ matching all backend models: Device, Camera, NormalizedEvent, DashboardSummary, PaginatedResponse",
+    "Configure build script in package.json to output to ../gateway/src/wwwroot/",
+    "Run 'npm run build' to verify frontend builds without errors",
+    "Create web/README.md documenting the frontend architecture, development setup, and build instructions"
+  ],
+  "acceptance_criteria": [
+    "Running 'npm run build' in web/ directory completes without errors",
+    "Build output is configured to go to ../gateway/src/wwwroot/",
+    "All pages render: Dashboard, Devices, Cameras, Events, EventDetail, Reports",
+    "SignalR client is configured to connect to /hubs/events",
+    "REST API client has typed methods for all gateway endpoints",
+    "Event list supports filtering by date range, device, event type, severity, ack status",
+    "Event detail page has acknowledge button and action memo input",
+    "Reports page has CSV export functionality",
+    "TypeScript compiles without type errors"
+  ],
+  "verification": [
+    "Run 'npm install' in web/ directory and confirm exit code 0",
+    "Run 'npm run build' in web/ directory and confirm exit code 0 with output in dist/ or ../gateway/src/wwwroot/"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

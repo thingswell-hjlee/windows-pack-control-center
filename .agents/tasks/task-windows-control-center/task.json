@@ -1,0 +1,7 @@
+{
+  "task_id": "task-windows-control-center",
+  "task_description": "Build a Windows Local Web Control Center for monitoring AIBox devices and network cameras. Consists of a .NET 8 Local Gateway (MQTT receiver, event normalizer, SQLite storage, REST API, SignalR) and a React/TypeScript Local Web Dashboard accessible at http://localhost:8088.",
+  "status": "in_progress",
+  "feature_order": ["FEAT-001", "FEAT-002", "FEAT-003"],
+  "blocked_reason": null
+}

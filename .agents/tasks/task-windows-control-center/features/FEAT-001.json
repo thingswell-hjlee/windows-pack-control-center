@@ -1,0 +1,40 @@
+{
+  "id": "FEAT-001",
+  "type": "feat",
+  "description": "Create the .NET 8 Local Gateway project with MQTT Receiver, Event Normalizer, SQLite schema, REST API, and SignalR hub. This is the core backend that receives MQTT events from AIBox devices, normalizes them, stores in SQLite, and exposes REST API + real-time SignalR for the frontend.",
+  "status": "in_progress",
+  "steps": [
+    "Install .NET 8 SDK using dotnet-install.sh script, set DOTNET_ROOT and PATH",
+    "Create the gateway/ directory structure: gateway/src/ (main project), gateway/tests/ (test project)",
+    "Initialize ASP.NET Core project in gateway/src/ with 'dotnet new web' and name it 'ControlCenter.Gateway'",
+    "Add NuGet packages: MQTTnet (v4.x), Microsoft.EntityFrameworkCore.Sqlite, Microsoft.AspNetCore.SignalR, Serilog.AspNetCore, Serilog.Sinks.File, Serilog.Sinks.Console, CsvHelper",
+    "Create SQLite schema with EF Core models in gateway/src/Models/: Device.cs (AIBox registration with fields: device_id, device_name, site_id, site_name, location, ip_address, mqtt_host, mqtt_port, mqtt_username, mqtt_password, event_topic, status_topic, enabled, description, created_at, updated_at, status), Camera.cs (network camera with fields: camera_id, camera_name, site_id, site_name, device_id, channel_no, location, ip_address, rtsp_url, onvif_enabled, onvif_host, onvif_username, onvif_password, status, enabled, description, created_at, updated_at), NormalizedEvent.cs (standard event schema with all fields from spec including event_id, event_type, severity, timestamp, ts_ms, track_id, bbox as JSON, confidence, roi_id, snapshot_url, clip_url, ack_status, ack_user, ack_time, action_memo, sync_status, raw_payload as JSON)",
+    "Create AppDbContext.cs in gateway/src/Data/ with DbContext configuration for SQLite, including OnModelCreating with proper indexes on event_id, device_id, timestamp, event_type, severity, ack_status",
+    "Create MqttReceiverService.cs as a BackgroundService in gateway/src/Services/ that: connects to configured MQTT brokers (one per registered AIBox), subscribes to aibox/+/event/# and aibox/+/status/# topics, handles reconnection logic, publishes received messages to internal channel",
+    "Create EventNormalizerService.cs in gateway/src/Services/ that: receives raw MQTT event payloads, transforms them into NormalizedEvent schema per spec (event_id = {device_id}-{ts_ms}-{event_type}-{camera_id}-{track_id}), sets schema_version=1.0, tenant_id=default, ack_status=unconfirmed, sync_status=pending, saves raw_payload, stores in SQLite, pushes to SignalR hub",
+    "Create DeviceStatusService.cs in gateway/src/Services/ that: processes aibox/+/status/# messages, updates device online/offline/warning status, implements heartbeat timeout (mark offline if no status in 60 seconds)",
+    "Create EventHub.cs in gateway/src/Hubs/ as SignalR hub with methods: NewEvent (broadcasts normalized events to connected clients), DeviceStatusChanged (broadcasts device status updates), CameraStatusChanged (broadcasts camera status updates)",
+    "Create REST API endpoints in gateway/src/Endpoints/: DevicesEndpoints.cs (CRUD for AIBox devices: GET /api/devices, GET /api/devices/{id}, POST /api/devices, PUT /api/devices/{id}, DELETE /api/devices/{id}), CamerasEndpoints.cs (CRUD for cameras: GET /api/cameras, GET /api/cameras/{id}, POST /api/cameras, PUT /api/cameras/{id}, DELETE /api/cameras/{id}), EventsEndpoints.cs (GET /api/events with pagination/filter by device_id/event_type/severity/date_range/ack_status, GET /api/events/{id}, PUT /api/events/{id}/ack for acknowledge, PUT /api/events/{id}/memo for action memo, GET /api/events/export/csv for CSV export)",
+    "Create DashboardEndpoints.cs in gateway/src/Endpoints/ with: GET /api/dashboard/summary (total devices, online count, total cameras, online count, unconfirmed events count, today's events count)",
+    "Configure Program.cs with: Serilog setup (console + file sinks to logs/ directory), EF Core SQLite (data source=controlcenter.db), SignalR, CORS for localhost development, static file serving from wwwroot/ for production frontend, Kestrel on port 8088, register all services and map all endpoints and hubs",
+    "Add appsettings.json with default configuration including database path, MQTT defaults, logging levels",
+    "Create gateway/README.md documenting the gateway architecture, build, and run instructions",
+    "Run 'dotnet build' to verify compilation succeeds"
+  ],
+  "acceptance_criteria": [
+    "Running 'dotnet build' in gateway/src/ compiles without errors",
+    "SQLite database schema includes tables for Devices, Cameras, and Events with all required fields",
+    "REST API endpoints are registered for devices, cameras, events CRUD, and dashboard summary",
+    "SignalR hub is configured at /hubs/events",
+    "MQTT receiver service is registered as a hosted background service",
+    "Event normalizer generates event_id per spec: {device_id}-{ts_ms}-{event_type}-{camera_id}-{track_id}",
+    "Static file serving is configured from wwwroot/ directory",
+    "Application listens on port 8088"
+  ],
+  "verification": [
+    "Run 'dotnet build' in gateway/src/ directory and confirm exit code 0 with no errors",
+    "Run 'dotnet build' in gateway/ solution level if solution file exists"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

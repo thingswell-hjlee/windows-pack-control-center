@@ -1,0 +1,22 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+*.userprefs
+*.sln.docstates
+*.db
+logs/
+
+# Node
+node_modules/
+dist/
+.env
+.env.local
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.swp
+*.swo

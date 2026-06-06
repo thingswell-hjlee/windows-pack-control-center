@@ -1,0 +1,129 @@
+using System.Collections.Concurrent;
+using System.Text.Json;
+using ControlCenter.Gateway.Data;
+using ControlCenter.Gateway.Hubs;
+using Microsoft.AspNetCore.SignalR;
+using Microsoft.EntityFrameworkCore;
+
+namespace ControlCenter.Gateway.Services;
+
+public class DeviceStatusService : BackgroundService
+{
+    private readonly ILogger<DeviceStatusService> _logger;
+    private readonly IServiceProvider _serviceProvider;
+    private readonly MqttReceiverService _mqttReceiver;
+    private readonly IHubContext<EventHub> _hubContext;
+    private readonly ConcurrentDictionary<string, DateTime> _lastHeartbeat = new();
+    private static readonly TimeSpan HeartbeatTimeout = TimeSpan.FromSeconds(60);
+
+    public DeviceStatusService(
+        ILogger<DeviceStatusService> logger,
+        IServiceProvider serviceProvider,
+        MqttReceiverService mqttReceiver,
+        IHubContext<EventHub> hubContext)
+    {
+        _logger = logger;
+        _serviceProvider = serviceProvider;
+        _mqttReceiver = mqttReceiver;
+        _hubContext = hubContext;
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        _logger.LogInformation("Device Status Service starting...");
+
+        var statusTask = ProcessStatusMessages(stoppingToken);
+        var heartbeatTask = CheckHeartbeats(stoppingToken);
+
+        await Task.WhenAll(statusTask, heartbeatTask);
+    }
+
+    private async Task ProcessStatusMessages(CancellationToken stoppingToken)
+    {
+        await foreach (var message in _mqttReceiver.StatusReader.ReadAllAsync(stoppingToken))
+        {
+            try
+            {
+                await ProcessStatusMessage(message, stoppingToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error processing status message from topic {Topic}", message.Topic);
+            }
+        }
+    }
+
+    private async Task ProcessStatusMessage(MqttMessage message, CancellationToken stoppingToken)
+    {
+        var deviceId = message.DeviceId;
+        _lastHeartbeat[deviceId] = DateTime.UtcNow;
+
+        string status = "online";
+        try
+        {
+            var payload = JsonDocument.Parse(message.Payload);
+            if (payload.RootElement.TryGetProperty("status", out var statusElement))
+            {
+                status = statusElement.GetString() ?? "online";
+            }
+        }
+        catch
+        {
+            // If payload is not valid JSON, treat as heartbeat (device is online)
+        }
+
+        await UpdateDeviceStatus(deviceId, status, stoppingToken);
+    }
+
+    private async Task UpdateDeviceStatus(string deviceId, string status, CancellationToken stoppingToken)
+    {
+        using var scope = _serviceProvider.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var device = await db.Devices.FindAsync(new object[] { deviceId }, stoppingToken);
+        if (device != null && device.Status != status)
+        {
+            device.Status = status;
+            device.UpdatedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync(stoppingToken);
+
+            await _hubContext.Clients.All.SendAsync("DeviceStatusChanged", new
+            {
+                deviceId,
+                status,
+                updatedAt = DateTime.UtcNow
+            }, stoppingToken);
+
+            _logger.LogInformation("Device {DeviceId} status changed to {Status}", deviceId, status);
+        }
+    }
+
+    private async Task CheckHeartbeats(CancellationToken stoppingToken)
+    {
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(15), stoppingToken);
+
+                var now = DateTime.UtcNow;
+                foreach (var (deviceId, lastSeen) in _lastHeartbeat)
+                {
+                    if (now - lastSeen > HeartbeatTimeout)
+                    {
+                        await UpdateDeviceStatus(deviceId, "offline", stoppingToken);
+                        _lastHeartbeat.TryRemove(deviceId, out _);
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error checking heartbeats");
+            }
+        }
+    }
+}
