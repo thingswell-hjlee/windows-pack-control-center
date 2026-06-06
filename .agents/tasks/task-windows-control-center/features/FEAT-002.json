@@ -2,7 +2,7 @@
   "id": "FEAT-002",
   "type": "feat",
   "description": "Create the React/TypeScript frontend (Local Web Dashboard) with all required pages: Dashboard overview, AIBox device monitoring, Camera monitoring, Event timeline, Event detail, Ack/Memo functionality, and CSV/Excel report export. The frontend connects to the gateway REST API and SignalR hub for real-time updates.",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "Initialize React project with Vite in web/ directory: npm create vite@latest . -- --template react-ts",
     "Install dependencies: @microsoft/signalr (SignalR client), react-router-dom (routing), axios (HTTP client), dayjs (date formatting), @tanstack/react-query (data fetching), lucide-react (icons), tailwindcss @tailwindcss/vite (styling)",
@@ -40,5 +40,5 @@
     "Run 'npm run build' in web/ directory and confirm exit code 0 with output in dist/ or ../gateway/src/wwwroot/"
   ],
   "blocked_reason": null,
-  "findings": ""
+  "findings": "Build succeeds with Vite 8 and TypeScript 6. Tailwind CSS v4 uses @tailwindcss/vite plugin (no tailwind.config.js needed). React 19.2 and react-router-dom 7 used. @microsoft/signalr v10 produces harmless INVALID_ANNOTATION warnings from Rolldown bundler about /*#__PURE__*/ comments but does not affect build. Build output confirmed at ../gateway/src/wwwroot/. The wwwroot assets (CSS/JS hashes) are committed to git so gateway can serve them."
 }
