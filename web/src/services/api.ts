@@ -113,3 +113,13 @@ export function getEventsExportCsvUrl(filters: EventFilters = {}): string {
   });
   return `/api/events/export/csv?${params.toString()}`;
 }
+
+export function getEventsExportExcelUrl(filters: EventFilters = {}): string {
+  const params = new URLSearchParams();
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== undefined && value !== '') {
+      params.append(key, String(value));
+    }
+  });
+  return `/api/events/export/excel?${params.toString()}`;
+}

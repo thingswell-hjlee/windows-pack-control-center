@@ -60,17 +60,33 @@ export function Events() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Events</h1>
-        <button
-          onClick={() => setShowFilters(!showFilters)}
-          className="relative flex items-center gap-2 border px-3 py-2 rounded-lg hover:bg-gray-50"
-        >
-          <Filter className="w-4 h-4" /> Filters
-          {activeFilterCount > 0 && (
-            <span className="absolute -top-2 -right-2 bg-blue-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-              {activeFilterCount}
-            </span>
-          )}
-        </button>
+        <div className="flex items-center gap-2">
+          <a
+            href={getEventsExportCsvUrl(filters)}
+            download
+            className="flex items-center gap-1 border px-3 py-2 rounded-lg hover:bg-gray-50 text-sm"
+          >
+            <Download className="w-4 h-4" /> CSV
+          </a>
+          <a
+            href={getEventsExportExcelUrl(filters)}
+            download
+            className="flex items-center gap-1 border px-3 py-2 rounded-lg hover:bg-gray-50 text-sm"
+          >
+            <Download className="w-4 h-4" /> Excel
+          </a>
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className="relative flex items-center gap-2 border px-3 py-2 rounded-lg hover:bg-gray-50"
+          >
+            <Filter className="w-4 h-4" /> Filters
+            {activeFilterCount > 0 && (
+              <span className="absolute -top-2 -right-2 bg-blue-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                {activeFilterCount}
+              </span>
+            )}
+          </button>
+        </div>
       </div>
 
       {showFilters && (
