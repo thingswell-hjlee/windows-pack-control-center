@@ -247,6 +247,7 @@ export function Events() {
             pageSize={filters.page_size || 20}
             total={data.total}
             onPageChange={(page) => setFilters({ ...filters, page })}
+            onPageSizeChange={(page_size) => setFilters({ ...filters, page_size, page: 1 })}
           />
         </>
       ) : (

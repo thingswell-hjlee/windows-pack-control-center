@@ -5,17 +5,46 @@ interface PaginationProps {
   pageSize: number;
   total: number;
   onPageChange: (page: number) => void;
+  onPageSizeChange?: (pageSize: number) => void;
+  pageSizeOptions?: number[];
 }
 
-export function Pagination({ page, pageSize, total, onPageChange }: PaginationProps) {
+const DEFAULT_PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
+
+export function Pagination({
+  page,
+  pageSize,
+  total,
+  onPageChange,
+  onPageSizeChange,
+  pageSizeOptions = DEFAULT_PAGE_SIZE_OPTIONS,
+}: PaginationProps) {
   const totalPages = Math.ceil(total / pageSize);
 
-  if (totalPages <= 1) return null;
+  if (totalPages <= 1 && !onPageSizeChange) return null;
 
   return (
     <div className="flex items-center justify-between px-4 py-3">
-      <div className="text-sm text-gray-700">
-        Showing {(page - 1) * pageSize + 1} to {Math.min(page * pageSize, total)} of {total} results
+      <div className="flex items-center gap-4">
+        <span className="text-sm text-gray-700">
+          Showing {(page - 1) * pageSize + 1} to {Math.min(page * pageSize, total)} of {total} results
+        </span>
+        {onPageSizeChange && (
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-gray-600">Per page:</label>
+            <select
+              value={pageSize}
+              onChange={(e) => onPageSizeChange(Number(e.target.value))}
+              className="border rounded-md px-2 py-1 text-sm"
+            >
+              {pageSizeOptions.map((size) => (
+                <option key={size} value={size}>
+                  {size}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
       <div className="flex items-center gap-2">
         <button
