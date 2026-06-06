@@ -11,6 +11,18 @@ export type CameraStatusUpdate = {
   status: string;
 };
 
+export type EventAcknowledgedUpdate = {
+  eventId: string;
+  ackStatus: string;
+  ackUser: string;
+  ackTime: string;
+};
+
+export type EventMemoUpdatedUpdate = {
+  eventId: string;
+  actionMemo: string;
+};
+
 let connection: signalR.HubConnection | null = null;
 
 export function getConnection(): signalR.HubConnection {
@@ -66,4 +78,24 @@ export function onCameraStatusChanged(callback: (update: CameraStatusUpdate) => 
 export function offCameraStatusChanged(callback: (update: CameraStatusUpdate) => void): void {
   const conn = getConnection();
   conn.off('CameraStatusChanged', callback);
+}
+
+export function onEventAcknowledged(callback: (update: EventAcknowledgedUpdate) => void): void {
+  const conn = getConnection();
+  conn.on('EventAcknowledged', callback);
+}
+
+export function offEventAcknowledged(callback: (update: EventAcknowledgedUpdate) => void): void {
+  const conn = getConnection();
+  conn.off('EventAcknowledged', callback);
+}
+
+export function onEventMemoUpdated(callback: (update: EventMemoUpdatedUpdate) => void): void {
+  const conn = getConnection();
+  conn.on('EventMemoUpdated', callback);
+}
+
+export function offEventMemoUpdated(callback: (update: EventMemoUpdatedUpdate) => void): void {
+  const conn = getConnection();
+  conn.off('EventMemoUpdated', callback);
 }
