@@ -101,11 +101,20 @@ public class EventNormalizerService : BackgroundService
         var exists = await db.Events.AnyAsync(e => e.EventId == eventId, stoppingToken);
         if (!exists)
         {
-            db.Events.Add(normalizedEvent);
-            await db.SaveChangesAsync(stoppingToken);
+            try
+            {
+                db.Events.Add(normalizedEvent);
+                await db.SaveChangesAsync(stoppingToken);
 
-            await _hubContext.Clients.All.SendAsync("NewEvent", normalizedEvent, stoppingToken);
-            _logger.LogInformation("Normalized and stored event {EventId} of type {EventType}", eventId, eventType);
+                await _hubContext.Clients.All.SendAsync("NewEvent", normalizedEvent, stoppingToken);
+                _logger.LogInformation("Normalized and stored event {EventId} of type {EventType}", eventId, eventType);
+            }
+            catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("UNIQUE") == true ||
+                                                 ex.InnerException?.Message.Contains("duplicate") == true ||
+                                                 ex.InnerException?.Message.Contains("already exists") == true)
+            {
+                _logger.LogDebug("Duplicate event {EventId} detected during insert, skipping", eventId);
+            }
         }
     }
 

@@ -38,10 +38,16 @@ public static class EventsEndpoints
                 query = query.Where(e => e.AckStatus == ack_status);
 
             if (!string.IsNullOrEmpty(start_date) && DateTime.TryParse(start_date, out var startDt))
-                query = query.Where(e => e.Timestamp.CompareTo(startDt.ToString("o")) >= 0);
+            {
+                var startMs = new DateTimeOffset(startDt.ToUniversalTime()).ToUnixTimeMilliseconds();
+                query = query.Where(e => e.TsMs >= startMs);
+            }
 
             if (!string.IsNullOrEmpty(end_date) && DateTime.TryParse(end_date, out var endDt))
-                query = query.Where(e => e.Timestamp.CompareTo(endDt.ToString("o")) <= 0);
+            {
+                var endMs = new DateTimeOffset(endDt.ToUniversalTime()).ToUnixTimeMilliseconds();
+                query = query.Where(e => e.TsMs <= endMs);
+            }
 
             var pageNum = page ?? 1;
             var pageSize = page_size ?? 50;
@@ -55,7 +61,7 @@ public static class EventsEndpoints
 
             return Results.Ok(new
             {
-                data = events,
+                items = events,
                 total,
                 page = pageNum,
                 page_size = pageSize,
@@ -118,10 +124,16 @@ public static class EventsEndpoints
                 query = query.Where(e => e.AckStatus == ack_status);
 
             if (!string.IsNullOrEmpty(start_date) && DateTime.TryParse(start_date, out var startDt))
-                query = query.Where(e => e.Timestamp.CompareTo(startDt.ToString("o")) >= 0);
+            {
+                var startMs = new DateTimeOffset(startDt.ToUniversalTime()).ToUnixTimeMilliseconds();
+                query = query.Where(e => e.TsMs >= startMs);
+            }
 
             if (!string.IsNullOrEmpty(end_date) && DateTime.TryParse(end_date, out var endDt))
-                query = query.Where(e => e.Timestamp.CompareTo(endDt.ToString("o")) <= 0);
+            {
+                var endMs = new DateTimeOffset(endDt.ToUniversalTime()).ToUnixTimeMilliseconds();
+                query = query.Where(e => e.TsMs <= endMs);
+            }
 
             var events = await query.OrderByDescending(e => e.TsMs).ToListAsync();
 

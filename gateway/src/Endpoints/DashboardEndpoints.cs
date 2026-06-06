@@ -15,8 +15,8 @@ public static class DashboardEndpoints
             var onlineCameras = await db.Cameras.CountAsync(c => c.Status == "online");
             var unconfirmedEvents = await db.Events.CountAsync(e => e.AckStatus == "unconfirmed");
 
-            var todayStart = DateTime.UtcNow.Date.ToString("o");
-            var todayEvents = await db.Events.CountAsync(e => e.Timestamp.CompareTo(todayStart) >= 0);
+            var todayStartMs = new DateTimeOffset(DateTime.UtcNow.Date).ToUnixTimeMilliseconds();
+            var todayEvents = await db.Events.CountAsync(e => e.TsMs >= todayStartMs);
 
             return Results.Ok(new
             {

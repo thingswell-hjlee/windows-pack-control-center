@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Threading.Channels;
 using ControlCenter.Gateway.Data;
 using ControlCenter.Gateway.Models;
@@ -20,7 +21,9 @@ public class MqttReceiverService : BackgroundService
     private readonly IServiceProvider _serviceProvider;
     private readonly Channel<MqttMessage> _eventChannel;
     private readonly Channel<MqttMessage> _statusChannel;
-    private readonly Dictionary<string, IMqttClient> _clients = new();
+    private readonly ConcurrentDictionary<string, IMqttClient> _clients = new();
+
+    private const int ChannelCapacity = 10_000;
 
     public ChannelReader<MqttMessage> EventReader => _eventChannel.Reader;
     public ChannelReader<MqttMessage> StatusReader => _statusChannel.Reader;
@@ -31,8 +34,16 @@ public class MqttReceiverService : BackgroundService
     {
         _logger = logger;
         _serviceProvider = serviceProvider;
-        _eventChannel = Channel.CreateUnbounded<MqttMessage>();
-        _statusChannel = Channel.CreateUnbounded<MqttMessage>();
+
+        var channelOptions = new BoundedChannelOptions(ChannelCapacity)
+        {
+            FullMode = BoundedChannelFullMode.DropOldest,
+            SingleReader = true,
+            SingleWriter = false
+        };
+
+        _eventChannel = Channel.CreateBounded<MqttMessage>(channelOptions);
+        _statusChannel = Channel.CreateBounded<MqttMessage>(channelOptions);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -115,10 +126,14 @@ public class MqttReceiverService : BackgroundService
 
             if (topic.Contains("/event/"))
             {
+                if (_eventChannel.Reader.Count > ChannelCapacity * 0.9)
+                    _logger.LogWarning("Event channel near capacity ({Count}/{Capacity})", _eventChannel.Reader.Count, ChannelCapacity);
                 await _eventChannel.Writer.WriteAsync(message, stoppingToken);
             }
             else if (topic.Contains("/status/"))
             {
+                if (_statusChannel.Reader.Count > ChannelCapacity * 0.9)
+                    _logger.LogWarning("Status channel near capacity ({Count}/{Capacity})", _statusChannel.Reader.Count, ChannelCapacity);
                 await _statusChannel.Writer.WriteAsync(message, stoppingToken);
             }
 
@@ -128,19 +143,41 @@ public class MqttReceiverService : BackgroundService
         client.DisconnectedAsync += async e =>
         {
             _logger.LogWarning("MQTT client disconnected from device {DeviceId}: {Reason}", device.DeviceId, e.Reason);
-            _clients.Remove(device.DeviceId);
+            _clients.TryRemove(device.DeviceId, out _);
 
-            if (!stoppingToken.IsCancellationRequested)
+            if (stoppingToken.IsCancellationRequested)
+                return;
+
+            try
             {
                 await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
-                try
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+
+            try
+            {
+                using var scope = _serviceProvider.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                var freshDevice = await db.Devices.FirstOrDefaultAsync(d => d.DeviceId == device.DeviceId);
+
+                if (freshDevice is null || !freshDevice.Enabled || string.IsNullOrEmpty(freshDevice.MqttHost))
                 {
-                    await ConnectToDevice(device, stoppingToken);
+                    _logger.LogInformation("Device {DeviceId} no longer eligible for MQTT connection, skipping reconnect", device.DeviceId);
+                    return;
                 }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Failed to reconnect to device {DeviceId}", device.DeviceId);
-                }
+
+                await ConnectToDevice(freshDevice, stoppingToken);
+            }
+            catch (OperationCanceledException)
+            {
+                // Service is stopping, no action needed
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to reconnect to device {DeviceId}", device.DeviceId);
             }
         };
 
@@ -175,8 +212,8 @@ public class MqttReceiverService : BackgroundService
         }
 
         _clients.Clear();
-        _eventChannel.Writer.Complete();
-        _statusChannel.Writer.Complete();
+        _eventChannel.Writer.TryComplete();
+        _statusChannel.Writer.TryComplete();
 
         await base.StopAsync(cancellationToken);
     }
