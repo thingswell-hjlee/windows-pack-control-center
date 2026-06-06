@@ -1,0 +1,8 @@
+Windows Pack Control Center
+Copyright (c) 2024-2026 Thingswell Co., Ltd. All rights reserved.
+
+이 소프트웨어는 Thingswell Co., Ltd.의 재산입니다.
+무단 복제, 배포, 수정을 금지합니다.
+
+This software is the property of Thingswell Co., Ltd.
+Unauthorized copying, distribution, or modification is prohibited.

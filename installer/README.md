@@ -1,149 +1,121 @@
-# Windows Installer / Deployment
+# Windows Pack Control Center - Installer
 
-## Overview
+Windows Pack Control Center를 위한 Inno Setup 기반 Windows 설치 패키지입니다.
 
-The Control Center is deployed as a self-contained .NET 8 application for Windows x64. No .NET Runtime installation is required on the target machine.
+## Prerequisites (빌드 환경 요구사항)
 
-## Build for Deployment
+| Tool | Version | Download |
+|------|---------|----------|
+| .NET 8 SDK | 8.0+ | https://dotnet.microsoft.com/download |
+| Node.js | 18+ | https://nodejs.org/ |
+| Inno Setup | 6.x | https://jrsoftware.org/isdl.php |
 
-### Using the Build Script (Recommended)
+## How to Build (빌드 방법)
 
-From the project root:
-
-```powershell
-# PowerShell (Windows)
-./build.ps1
-
-# Bash (Linux/CI)
-./build.sh
-```
-
-This produces a complete deployment package in the `dist/` folder.
-
-### Manual Build
-
-#### Step 1: Build the React Frontend
-
-```bash
-cd web
-npm install
-npm run build
-```
-
-This outputs the built frontend to `gateway/src/wwwroot/`.
-
-#### Step 2: Publish the .NET Gateway
-
-```bash
-cd gateway/src
-dotnet publish -c Release -r win-x64 --self-contained -o ../../dist
-```
-
-Options explained:
-- `-c Release` - Release configuration (optimized)
-- `-r win-x64` - Target Windows 64-bit
-- `--self-contained` - Include .NET runtime (no runtime install needed on target)
-- `-o ../../dist` - Output to dist/ folder at project root
-
-## Deployment Package
-
-The `dist/` folder contains everything needed to run on the target machine:
-
-```
-dist/
-├── ControlCenter.Gateway.exe   # Main executable
-├── wwwroot/                    # React dashboard (embedded)
-│   ├── index.html
-│   └── assets/
-├── appsettings.json            # Configuration file
-├── web.config                  # IIS configuration (optional)
-└── (runtime DLLs)              # .NET runtime and dependencies
-```
-
-## Installation on Target Machine
-
-1. Copy the entire `dist/` folder to the target machine:
-   ```
-   Recommended path: C:\ControlCenter\
-   ```
-
-2. (Optional) Edit `appsettings.json` to customize configuration.
-
-3. Run `ControlCenter.Gateway.exe` to start the application.
-
-4. Access the dashboard at http://localhost:8088
-
-## Running as a Windows Service
-
-To run the application as a Windows Service (starts automatically on boot):
-
-### Register the Service
-
-```cmd
-sc create ControlCenterGateway ^
-    binPath= "C:\ControlCenter\ControlCenter.Gateway.exe" ^
-    start= auto ^
-    DisplayName= "Control Center Gateway"
-```
-
-### Start the Service
-
-```cmd
-sc start ControlCenterGateway
-```
-
-### Stop the Service
-
-```cmd
-sc stop ControlCenterGateway
-```
-
-### Remove the Service
-
-```cmd
-sc stop ControlCenterGateway
-sc delete ControlCenterGateway
-```
-
-## Firewall Configuration
-
-If the dashboard needs to be accessed from other machines on the network:
+### PowerShell (권장)
 
 ```powershell
-# Allow inbound connections to port 8088
-New-NetFirewallRule -DisplayName "Control Center Web" `
-    -Direction Inbound -Port 8088 -Protocol TCP -Action Allow
+# 프로젝트 루트에서 실행
+.\installer\build-installer.ps1
 ```
 
-## Updating
+### Custom Options
 
-1. Stop the application or service.
-2. Replace all files in the installation folder EXCEPT:
-   - `controlcenter.db` (database - preserves data)
-   - `appsettings.json` (configuration - preserves custom settings)
-3. Start the application or service.
-
-## Troubleshooting Deployment
-
-### Application fails to start
-- Check that the target machine is Windows 10 x64 or later
-- Ensure port 8088 is not in use by another application
-- Check the `logs/` folder for error details
-
-### Missing wwwroot files
-- Ensure the frontend was built before publishing (`npm run build` in web/)
-- Verify `wwwroot/index.html` exists in the dist/ folder
-
-### Permission issues
-- If running as a service, ensure the service account has read/write access to the installation folder
-- The application needs write access for `controlcenter.db` and the `logs/` folder
-
-## Alternative: Framework-Dependent Deployment
-
-If the .NET 8 Runtime is already installed on the target machine, you can create a smaller package:
-
-```bash
-dotnet publish -c Release -r win-x64 --no-self-contained -o ../../dist
+```powershell
+.\installer\build-installer.ps1 -Configuration Release -Runtime win-x64 -InnoSetupPath "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
 ```
 
-This requires [.NET 8 Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) to be installed on the target.
+### Build Output
+
+빌드 완료 후 생성되는 파일:
+
+- `dist/publish/` - 자체 포함(self-contained) 단일 실행 파일
+- `dist/installer/WindowsPackControlCenter_Setup_1.0.0.exe` - 설치 프로그램
+
+## Directory Structure After Installation (설치 후 디렉토리 구조)
+
+### Program Files (프로그램 파일)
+
+```
+C:\Program Files\Thingswell\WindowsPackControlCenter\
+├── ControlCenter.Gateway.exe    # Main executable
+├── wwwroot/                     # Embedded React dashboard
+└── (runtime dependencies)
+```
+
+### Application Data (애플리케이션 데이터)
+
+```
+C:\ProgramData\Thingswell\WindowsPackControlCenter\
+├── appsettings.json             # Configuration overrides
+├── controlcenter.db             # SQLite database
+├── logs/                        # Application logs
+│   └── gateway-YYYYMMDD.log
+└── data/                        # Additional data files
+```
+
+## Configuration (설정)
+
+설정 파일 위치: `C:\ProgramData\Thingswell\WindowsPackControlCenter\appsettings.json`
+
+주요 설정:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Kestrel:Endpoints:Http:Url | http://0.0.0.0:8088 | HTTP 서버 포트 |
+| Mqtt:DefaultPort | 1883 | MQTT 기본 포트 |
+| Mqtt:HeartbeatTimeoutSeconds | 60 | 장치 오프라인 판단 시간 |
+| CameraStatus:CheckIntervalSeconds | 30 | 카메라 상태 점검 주기 |
+
+## Log Files (로그 파일)
+
+로그 파일 위치: `C:\ProgramData\Thingswell\WindowsPackControlCenter\logs\`
+
+- 일별 롤링 로그 (최대 31일 보관)
+- 파일명 패턴: `gateway-YYYYMMDD.log`
+
+## Starting and Stopping (시작/종료)
+
+### 시작
+
+- **Start Menu:** Windows Pack Control Center 바로가기 클릭
+- **Desktop:** 바탕화면 아이콘 (설치 시 선택한 경우)
+- **Auto-start:** Windows 로그인 시 자동 실행 (설치 시 선택한 경우)
+
+### 종료
+
+- 시스템 트레이에서 종료하거나
+- 작업 관리자에서 `ControlCenter.Gateway.exe` 프로세스 종료
+
+### 대시보드 접속
+
+브라우저에서 http://localhost:8088 접속
+
+## Uninstallation (제거)
+
+1. Windows 설정 > 앱 > Windows Pack Control Center > 제거
+2. 또는: Start Menu > Windows Pack Control Center > 제거
+
+제거 시 사용자 데이터 삭제 여부를 선택할 수 있습니다:
+- **예:** 데이터베이스, 로그, 설정 파일 모두 삭제
+- **아니오:** ProgramData 폴더의 데이터 보존 (재설치 시 기존 데이터 유지)
+
+## Firewall (방화벽)
+
+설치 시 Windows 방화벽에 TCP 포트 8088 인바운드 규칙이 자동 추가됩니다.
+제거 시 해당 규칙이 자동 삭제됩니다.
+
+## Troubleshooting (문제 해결)
+
+### 포트 충돌
+
+포트 8088이 이미 사용 중인 경우:
+1. `appsettings.json`에서 포트 변경
+2. 또는 충돌하는 프로세스 종료
+
+### 설치 프로그램 빌드 실패
+
+1. Inno Setup 6.x가 설치되어 있는지 확인
+2. .NET 8 SDK가 설치되어 있는지 확인
+3. Node.js 18+가 설치되어 있는지 확인
+4. `npm install` 실행 시 네트워크 연결 확인
