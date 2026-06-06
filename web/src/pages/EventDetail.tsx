@@ -13,6 +13,7 @@ export function EventDetail() {
   const queryClient = useQueryClient();
   const [memo, setMemo] = useState('');
   const [memoLoaded, setMemoLoaded] = useState(false);
+  const [operatorName, setOperatorName] = useState('');
 
   const { data: event, isLoading } = useQuery({
     queryKey: ['event', id],
@@ -26,12 +27,21 @@ export function EventDetail() {
   }
 
   const ackMutation = useMutation({
-    mutationFn: () => acknowledgeEvent(id!, 'admin'),
+    mutationFn: (user: string) => acknowledgeEvent(id!, user),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['event', id] });
       queryClient.invalidateQueries({ queryKey: ['events'] });
     },
   });
+
+  const handleAcknowledge = () => {
+    const name = operatorName.trim();
+    if (!name) {
+      alert('Please enter your operator name before acknowledging.');
+      return;
+    }
+    ackMutation.mutate(name);
+  };
 
   const memoMutation = useMutation({
     mutationFn: () => updateEventMemo(id!, memo),
@@ -118,13 +128,22 @@ export function EventDetail() {
               </span>
             )}
             {event.ack_status !== 'confirmed' && (
-              <button
-                onClick={() => ackMutation.mutate()}
-                disabled={ackMutation.isPending}
-                className="flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:opacity-50"
-              >
-                <Check className="w-4 h-4" /> Acknowledge
-              </button>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={operatorName}
+                  onChange={(e) => setOperatorName(e.target.value)}
+                  placeholder="Operator name"
+                  className="border rounded-md px-2 py-1.5 text-sm w-40"
+                />
+                <button
+                  onClick={handleAcknowledge}
+                  disabled={ackMutation.isPending}
+                  className="flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:opacity-50"
+                >
+                  <Check className="w-4 h-4" /> Acknowledge
+                </button>
+              </div>
             )}
           </div>
         </div>

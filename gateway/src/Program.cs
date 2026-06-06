@@ -31,6 +31,9 @@ try
     builder.Services.AddSignalR();
 
     // Add CORS for localhost development
+    // NOTE: No authentication is configured intentionally for MVP.
+    // This control center is designed for trusted local-network deployments
+    // with no complex user permissions per spec. Add auth before exposing to untrusted networks.
     builder.Services.AddCors(options =>
     {
         options.AddDefaultPolicy(policy =>
