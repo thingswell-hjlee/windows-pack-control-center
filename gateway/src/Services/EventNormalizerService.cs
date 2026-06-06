@@ -14,6 +14,15 @@ public class EventNormalizerService : BackgroundService
     private readonly MqttReceiverService _mqttReceiver;
     private readonly IHubContext<EventHub> _hubContext;
 
+    // Event processing metrics counters
+    private long _eventsReceived;
+    private long _normalizationSuccesses;
+    private long _normalizationFailures;
+    private long _duplicatesRejected;
+    private DateTime _lastMetricsLogTime = DateTime.UtcNow;
+    private static readonly TimeSpan MetricsLogInterval = TimeSpan.FromMinutes(5);
+    private const int MetricsLogEventThreshold = 100;
+
     private static readonly Dictionary<string, string> EventSeverityMap = new(StringComparer.OrdinalIgnoreCase)
     {
         ["FALL_DETECTED"] = "HIGH",
@@ -53,13 +62,37 @@ public class EventNormalizerService : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error processing MQTT message from topic {Topic}", message.Topic);
+                Interlocked.Increment(ref _normalizationFailures);
+                _logger.LogWarning(ex,
+                    "Event normalization failed for device {DeviceId} on topic {Topic}. Reason: {ErrorReason}",
+                    message.DeviceId, message.Topic, ex.Message);
+                LogMetricsSummaryIfDue();
             }
+        }
+    }
+
+    private void LogMetricsSummaryIfDue()
+    {
+        var received = Interlocked.Read(ref _eventsReceived);
+        var timeSinceLastLog = DateTime.UtcNow - _lastMetricsLogTime;
+
+        if (received % MetricsLogEventThreshold == 0 || timeSinceLastLog >= MetricsLogInterval)
+        {
+            _logger.LogInformation(
+                "Event processing metrics - Received: {EventsReceived}, Successes: {NormalizationSuccesses}, Failures: {NormalizationFailures}, Duplicates rejected: {DuplicatesRejected}",
+                received,
+                Interlocked.Read(ref _normalizationSuccesses),
+                Interlocked.Read(ref _normalizationFailures),
+                Interlocked.Read(ref _duplicatesRejected));
+            _lastMetricsLogTime = DateTime.UtcNow;
         }
     }
 
     private async Task ProcessEventMessage(MqttMessage message, CancellationToken stoppingToken)
     {
+        // Increment received counter at the start
+        Interlocked.Increment(ref _eventsReceived);
+
         // Record received_at timestamp immediately upon message receipt
         var receivedAt = DateTime.UtcNow;
 
@@ -72,7 +105,9 @@ public class EventNormalizerService : BackgroundService
         var cameraId = GetJsonString(root, "camera_id") ?? GetJsonInt(root, "camera_id")?.ToString() ?? string.Empty;
         var trackId = GetJsonInt(root, "track_id") ?? 0;
 
-        var eventId = $"{deviceId}-{tsMs}-{eventType}-{cameraId}-{trackId}";
+        var eventId = trackId > 0
+            ? $"{deviceId}-{tsMs}-{eventType}-{cameraId}-{trackId}"
+            : $"{deviceId}-{tsMs}-{eventType}-{cameraId}";
         var severity = EventSeverityMap.GetValueOrDefault(eventType, "LOW");
 
         // Extract optional fields from payload
@@ -131,7 +166,7 @@ public class EventNormalizerService : BackgroundService
             Timestamp = GetJsonString(root, "timestamp") ?? DateTime.UtcNow.ToString("o"),
             TsMs = tsMs,
             TrackId = trackId,
-            Bbox = GetJsonString(root, "bbox") ?? GetJsonObject(root, "bbox"),
+            Bbox = ConvertBbox(root),
             Confidence = GetJsonDouble(root, "confidence") ?? 0.0,
             RoiId = GetJsonInt(root, "roi_id") ?? 0,
             RoiName = roiName,
@@ -157,6 +192,8 @@ public class EventNormalizerService : BackgroundService
                 db.Events.Add(normalizedEvent);
                 await db.SaveChangesAsync(stoppingToken);
 
+                Interlocked.Increment(ref _normalizationSuccesses);
+
                 await _hubContext.Clients.All.SendAsync("NewEvent", normalizedEvent, stoppingToken);
                 _logger.LogInformation("Normalized and stored event {EventId} of type {EventType}", eventId, eventType);
             }
@@ -164,9 +201,16 @@ public class EventNormalizerService : BackgroundService
                                                  ex.InnerException?.Message.Contains("duplicate") == true ||
                                                  ex.InnerException?.Message.Contains("already exists") == true)
             {
+                Interlocked.Increment(ref _duplicatesRejected);
                 _logger.LogDebug("Duplicate event {EventId} detected during insert, skipping", eventId);
             }
         }
+        else
+        {
+            Interlocked.Increment(ref _duplicatesRejected);
+        }
+
+        LogMetricsSummaryIfDue();
     }
 
     private static string? GetJsonString(JsonElement element, string property)
@@ -210,6 +254,26 @@ public class EventNormalizerService : BackgroundService
             if (value.ValueKind == JsonValueKind.Number)
                 return value.GetDouble();
         }
+        return null;
+    }
+
+    private static string? ConvertBbox(JsonElement root)
+    {
+        if (!root.TryGetProperty("bbox", out var bboxElement))
+            return null;
+
+        if (bboxElement.ValueKind == JsonValueKind.Array && bboxElement.GetArrayLength() == 4)
+        {
+            var x = bboxElement[0].GetDouble();
+            var y = bboxElement[1].GetDouble();
+            var w = bboxElement[2].GetDouble();
+            var h = bboxElement[3].GetDouble();
+            return JsonSerializer.Serialize(new { x, y, w, h });
+        }
+
+        if (bboxElement.ValueKind == JsonValueKind.Object)
+            return bboxElement.GetRawText();
+
         return null;
     }
 }

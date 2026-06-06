@@ -1,7 +1,9 @@
 using System.Globalization;
 using ControlCenter.Gateway.Data;
+using ControlCenter.Gateway.Hubs;
 using ControlCenter.Gateway.Models;
 using CsvHelper;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 
 namespace ControlCenter.Gateway.Endpoints;
@@ -75,21 +77,35 @@ public static class EventsEndpoints
             return ev is null ? Results.NotFound() : Results.Ok(ev);
         });
 
-        group.MapPut("/{id}/ack", async (string id, AckRequest request, AppDbContext db) =>
+        group.MapPut("/{id}/ack", async (string id, AckRequest request, AppDbContext db, IHubContext<EventHub> hubContext) =>
         {
             var ev = await db.Events.FindAsync(id);
             if (ev is null)
                 return Results.NotFound();
+
+            // Idempotent: if already confirmed, return current state without modification
+            if (ev.AckStatus == "confirmed")
+                return Results.Ok(ev);
 
             ev.AckStatus = "confirmed";
             ev.AckUser = request.AckUser;
             ev.AckTime = DateTime.UtcNow;
 
             await db.SaveChangesAsync();
+
+            // Broadcast EventAcknowledged via SignalR
+            await hubContext.Clients.All.SendAsync("EventAcknowledged", new
+            {
+                eventId = id,
+                ackStatus = ev.AckStatus,
+                ackUser = ev.AckUser,
+                ackTime = ev.AckTime
+            });
+
             return Results.Ok(ev);
         });
 
-        group.MapPut("/{id}/memo", async (string id, MemoRequest request, AppDbContext db) =>
+        group.MapPut("/{id}/memo", async (string id, MemoRequest request, AppDbContext db, IHubContext<EventHub> hubContext) =>
         {
             var ev = await db.Events.FindAsync(id);
             if (ev is null)
@@ -97,6 +113,14 @@ public static class EventsEndpoints
 
             ev.ActionMemo = request.ActionMemo;
             await db.SaveChangesAsync();
+
+            // Broadcast EventMemoUpdated via SignalR
+            await hubContext.Clients.All.SendAsync("EventMemoUpdated", new
+            {
+                eventId = id,
+                actionMemo = ev.ActionMemo
+            });
+
             return Results.Ok(ev);
         });
 

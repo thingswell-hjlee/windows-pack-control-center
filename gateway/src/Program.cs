@@ -46,11 +46,16 @@ try
     builder.Services.Configure<MqttSettings>(
         builder.Configuration.GetSection(MqttSettings.SectionName));
 
+    // Configure Camera Status settings from appsettings.json
+    builder.Services.Configure<CameraStatusSettings>(
+        builder.Configuration.GetSection(CameraStatusSettings.SectionName));
+
     // Register background services
     builder.Services.AddSingleton<MqttReceiverService>();
     builder.Services.AddHostedService(sp => sp.GetRequiredService<MqttReceiverService>());
     builder.Services.AddHostedService<EventNormalizerService>();
     builder.Services.AddHostedService<DeviceStatusService>();
+    builder.Services.AddHostedService<CameraStatusService>();
 
     var app = builder.Build();
 

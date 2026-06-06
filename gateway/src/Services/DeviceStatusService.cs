@@ -59,6 +59,17 @@ public class DeviceStatusService : BackgroundService
     private async Task ProcessStatusMessage(MqttMessage message, CancellationToken stoppingToken)
     {
         var deviceId = message.DeviceId;
+
+        // Check if device is disabled; if so, ignore the status message
+        using var scope = _serviceProvider.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var device = await db.Devices.FindAsync(new object[] { deviceId }, stoppingToken);
+        if (device != null && !device.Enabled)
+        {
+            _logger.LogDebug("Ignoring status message for disabled device {DeviceId}", deviceId);
+            return;
+        }
+
         _lastHeartbeat[deviceId] = DateTime.UtcNow;
 
         string status = "online";
@@ -111,8 +122,22 @@ public class DeviceStatusService : BackgroundService
 
                 var now = DateTime.UtcNow;
                 var heartbeatTimeout = TimeSpan.FromSeconds(_settings.HeartbeatTimeoutSeconds);
+
+                using var scope = _serviceProvider.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
                 foreach (var (deviceId, lastSeen) in _lastHeartbeat)
                 {
+                    // Check if device is still enabled before applying timeout
+                    var device = await db.Devices.FindAsync(new object[] { deviceId }, stoppingToken);
+                    if (device != null && !device.Enabled)
+                    {
+                        // Device is disabled; skip heartbeat check and remove from tracking
+                        _lastHeartbeat.TryRemove(deviceId, out _);
+                        _logger.LogDebug("Skipping heartbeat check for disabled device {DeviceId}", deviceId);
+                        continue;
+                    }
+
                     if (now - lastSeen > heartbeatTimeout)
                     {
                         await UpdateDeviceStatus(deviceId, "offline", stoppingToken);
