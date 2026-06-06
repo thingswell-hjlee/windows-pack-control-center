@@ -2,7 +2,7 @@
   "id": "FEAT-001",
   "type": "feat",
   "description": "Create the .NET 8 Local Gateway project with MQTT Receiver, Event Normalizer, SQLite schema, REST API, and SignalR hub. This is the core backend that receives MQTT events from AIBox devices, normalizes them, stores in SQLite, and exposes REST API + real-time SignalR for the frontend.",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "Install .NET 8 SDK using dotnet-install.sh script, set DOTNET_ROOT and PATH",
     "Create the gateway/ directory structure: gateway/src/ (main project), gateway/tests/ (test project)",
@@ -36,5 +36,5 @@
     "Run 'dotnet build' in gateway/ solution level if solution file exists"
   ],
   "blocked_reason": null,
-  "findings": ""
+  "findings": "Build succeeds with dotnet 8.0.421 SDK. The dotnet new web template defaulted to net9.0 so the csproj was manually updated to target net8.0. MQTTnet 4.3.7.1207 used. EF Core Sqlite 8.0.27 used. Serilog.AspNetCore 10.0.0 is compatible with net8.0. Separate channels used for event and status messages to allow independent consumers."
 }
