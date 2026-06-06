@@ -60,6 +60,9 @@ public class EventNormalizerService : BackgroundService
 
     private async Task ProcessEventMessage(MqttMessage message, CancellationToken stoppingToken)
     {
+        // Record received_at timestamp immediately upon message receipt
+        var receivedAt = DateTime.UtcNow;
+
         var payload = JsonDocument.Parse(message.Payload);
         var root = payload.RootElement;
 
@@ -72,14 +75,57 @@ public class EventNormalizerService : BackgroundService
         var eventId = $"{deviceId}-{tsMs}-{eventType}-{cameraId}-{trackId}";
         var severity = EventSeverityMap.GetValueOrDefault(eventType, "LOW");
 
+        // Extract optional fields from payload
+        var siteName = GetJsonString(root, "site_name");
+        var roiName = GetJsonString(root, "roi_name");
+        var modelVersion = GetJsonString(root, "model_version");
+        var edgeAppVersion = GetJsonString(root, "edge_app_version");
+
+        // Create scope for database lookups
+        using var scope = _serviceProvider.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        // Enrich with device_name and site_name from database
+        string? deviceName = null;
+        string? dbSiteName = null;
+        if (!string.IsNullOrEmpty(deviceId))
+        {
+            var device = await db.Devices
+                .AsNoTracking()
+                .FirstOrDefaultAsync(d => d.DeviceId == deviceId, stoppingToken);
+
+            if (device != null)
+            {
+                deviceName = device.DeviceName;
+                dbSiteName = device.SiteName;
+            }
+        }
+
+        // Enrich with camera_name from database
+        string? cameraName = null;
+        if (!string.IsNullOrEmpty(cameraId))
+        {
+            var camera = await db.Cameras
+                .AsNoTracking()
+                .FirstOrDefaultAsync(c => c.CameraId == cameraId && c.DeviceId == deviceId, stoppingToken);
+
+            cameraName = camera?.CameraName;
+        }
+
+        // Use payload site_name if available, otherwise fallback to device's site_name
+        var finalSiteName = siteName ?? dbSiteName;
+
         var normalizedEvent = new NormalizedEvent
         {
             EventId = eventId,
             SchemaVersion = "1.0",
             TenantId = "default",
             SiteId = GetJsonString(root, "site_id"),
+            SiteName = finalSiteName,
             DeviceId = deviceId,
+            DeviceName = deviceName,
             CameraId = cameraId,
+            CameraName = cameraName,
             EventType = eventType,
             Severity = severity,
             Timestamp = GetJsonString(root, "timestamp") ?? DateTime.UtcNow.ToString("o"),
@@ -88,15 +134,20 @@ public class EventNormalizerService : BackgroundService
             Bbox = GetJsonString(root, "bbox") ?? GetJsonObject(root, "bbox"),
             Confidence = GetJsonDouble(root, "confidence") ?? 0.0,
             RoiId = GetJsonInt(root, "roi_id") ?? 0,
+            RoiName = roiName,
             SnapshotUrl = GetJsonString(root, "snapshot_url"),
             ClipUrl = GetJsonString(root, "clip_url"),
+            ModelVersion = modelVersion,
+            EdgeAppVersion = edgeAppVersion,
             AckStatus = "unconfirmed",
             SyncStatus = "pending",
-            RawPayload = message.Payload
+            SyncRetryCount = 0,
+            LastSyncTime = null,
+            CloudEventId = null,
+            SyncErrorMessage = null,
+            RawPayload = message.Payload,
+            ReceivedAt = receivedAt
         };
-
-        using var scope = _serviceProvider.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
         var exists = await db.Events.AnyAsync(e => e.EventId == eventId, stoppingToken);
         if (!exists)
