@@ -1,8 +1,8 @@
 import { useState, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Filter } from 'lucide-react';
-import { getEvents, getDevices } from '../services/api';
+import { Filter, Download } from 'lucide-react';
+import { getEvents, getDevices, getCameras, getEventsExportCsvUrl, getEventsExportExcelUrl } from '../services/api';
 import type { EventFilters } from '../services/api';
 import { SeverityBadge } from '../components/SeverityBadge';
 import { Pagination } from '../components/Pagination';
@@ -32,6 +32,21 @@ export function Events() {
     queryFn: getDevices,
   });
 
+  const { data: cameras } = useQuery({
+    queryKey: ['cameras'],
+    queryFn: getCameras,
+  });
+
+  const activeFilterCount = [
+    filters.device_id,
+    filters.camera_id,
+    filters.event_type,
+    filters.severity,
+    filters.ack_status,
+    filters.start_date,
+    filters.end_date,
+  ].filter((v) => v !== undefined && v !== '').length;
+
   const handleNewEvent = useCallback(
     (_event: NormalizedEvent) => {
       queryClient.invalidateQueries({ queryKey: ['events'] });
@@ -45,12 +60,33 @@ export function Events() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Events</h1>
-        <button
-          onClick={() => setShowFilters(!showFilters)}
-          className="flex items-center gap-2 border px-3 py-2 rounded-lg hover:bg-gray-50"
-        >
-          <Filter className="w-4 h-4" /> Filters
-        </button>
+        <div className="flex items-center gap-2">
+          <a
+            href={getEventsExportCsvUrl(filters)}
+            download
+            className="flex items-center gap-1 border px-3 py-2 rounded-lg hover:bg-gray-50 text-sm"
+          >
+            <Download className="w-4 h-4" /> CSV
+          </a>
+          <a
+            href={getEventsExportExcelUrl(filters)}
+            download
+            className="flex items-center gap-1 border px-3 py-2 rounded-lg hover:bg-gray-50 text-sm"
+          >
+            <Download className="w-4 h-4" /> Excel
+          </a>
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className="relative flex items-center gap-2 border px-3 py-2 rounded-lg hover:bg-gray-50"
+          >
+            <Filter className="w-4 h-4" /> Filters
+            {activeFilterCount > 0 && (
+              <span className="absolute -top-2 -right-2 bg-blue-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                {activeFilterCount}
+              </span>
+            )}
+          </button>
+        </div>
       </div>
 
       {showFilters && (
@@ -87,6 +123,23 @@ export function Events() {
                     {d.device_name}
                   </option>
                 ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Camera</label>
+              <select
+                value={filters.camera_id || ''}
+                onChange={(e) => setFilters({ ...filters, camera_id: e.target.value, page: 1 })}
+                className="w-full border rounded-md p-2 text-sm"
+              >
+                <option value="">All Cameras</option>
+                {cameras
+                  ?.filter((c) => !filters.device_id || c.device_id === filters.device_id)
+                  .map((c) => (
+                    <option key={c.camera_id} value={c.camera_id}>
+                      {c.camera_name}
+                    </option>
+                  ))}
               </select>
             </div>
             <div>
@@ -194,6 +247,7 @@ export function Events() {
             pageSize={filters.page_size || 20}
             total={data.total}
             onPageChange={(page) => setFilters({ ...filters, page })}
+            onPageSizeChange={(page_size) => setFilters({ ...filters, page_size, page: 1 })}
           />
         </>
       ) : (

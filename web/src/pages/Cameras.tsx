@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Pencil, Trash2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, Filter } from 'lucide-react';
 import { getCameras, createCamera, updateCamera, deleteCamera, getDevices } from '../services/api';
+import { useSignalR } from '../hooks/useSignalR';
 import { StatusBadge } from '../components/StatusBadge';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { EmptyState } from '../components/EmptyState';
@@ -31,6 +32,14 @@ export function Cameras() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingCamera, setEditingCamera] = useState<Partial<Camera> | null>(null);
   const [formData, setFormData] = useState<Partial<Camera>>(emptyCamera);
+  const [filterDeviceId, setFilterDeviceId] = useState<string>('');
+
+  // Real-time SignalR updates for camera status changes
+  useSignalR({
+    onCameraStatusChanged: () => {
+      queryClient.invalidateQueries({ queryKey: ['cameras'] });
+    },
+  });
 
   const { data: cameras, isLoading } = useQuery({
     queryKey: ['cameras'],
@@ -98,8 +107,13 @@ export function Cameras() {
     }
   }
 
+  // Filter cameras by selected device
+  const filteredCameras = filterDeviceId
+    ? cameras?.filter((camera) => camera.device_id === filterDeviceId)
+    : cameras;
+
   // Group cameras by device
-  const groupedCameras = cameras?.reduce(
+  const groupedCameras = filteredCameras?.reduce(
     (acc, camera) => {
       const deviceId = camera.device_id || 'unassigned';
       if (!acc[deviceId]) acc[deviceId] = [];
@@ -115,12 +129,29 @@ export function Cameras() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Cameras</h1>
-        <button
-          onClick={openAddModal}
-          className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-        >
-          <Plus className="w-4 h-4" /> Add Camera
-        </button>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <Filter className="w-4 h-4 text-gray-500" />
+            <select
+              value={filterDeviceId}
+              onChange={(e) => setFilterDeviceId(e.target.value)}
+              className="border rounded-md px-3 py-2 text-sm"
+            >
+              <option value="">All Devices</option>
+              {devices?.map((d) => (
+                <option key={d.device_id} value={d.device_id}>
+                  {d.device_name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button
+            onClick={openAddModal}
+            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+          >
+            <Plus className="w-4 h-4" /> Add Camera
+          </button>
+        </div>
       </div>
 
       {groupedCameras && Object.keys(groupedCameras).length > 0 ? (

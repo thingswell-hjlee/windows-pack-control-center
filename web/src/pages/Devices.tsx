@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
-import { getDevices, createDevice, updateDevice, deleteDevice } from '../services/api';
+import { getDevices, createDevice, updateDevice, deleteDevice, getCameras } from '../services/api';
 import { StatusBadge } from '../components/StatusBadge';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { EmptyState } from '../components/EmptyState';
@@ -35,6 +35,23 @@ export function Devices() {
     queryKey: ['devices'],
     queryFn: getDevices,
   });
+
+  const { data: cameras } = useQuery({
+    queryKey: ['cameras'],
+    queryFn: getCameras,
+  });
+
+  // Count cameras per device
+  const cameraCountByDevice = (cameras || []).reduce<Record<string, number>>((acc, cam) => {
+    acc[cam.device_id] = (acc[cam.device_id] || 0) + 1;
+    return acc;
+  }, {});
+
+  // Derive effective status considering enabled flag
+  function getEffectiveStatus(device: Device): string {
+    if (!device.enabled) return 'disabled';
+    return device.status || 'unknown';
+  }
 
   const createMutation = useMutation({
     mutationFn: (device: Partial<Device>) => createDevice(device),
@@ -116,6 +133,8 @@ export function Devices() {
                 <th className="text-left p-3">Location</th>
                 <th className="text-left p-3">IP Address</th>
                 <th className="text-left p-3">Status</th>
+                <th className="text-left p-3">Cameras</th>
+                <th className="text-left p-3">Last Updated</th>
                 <th className="text-left p-3">Actions</th>
               </tr>
             </thead>
@@ -127,7 +146,15 @@ export function Devices() {
                   <td className="p-3">{device.location}</td>
                   <td className="p-3 font-mono text-xs">{device.ip_address}</td>
                   <td className="p-3">
-                    <StatusBadge status={device.status} />
+                    <StatusBadge status={getEffectiveStatus(device)} />
+                  </td>
+                  <td className="p-3 text-center">
+                    <span className="inline-flex items-center gap-1 text-xs text-gray-600">
+                      {cameraCountByDevice[device.device_id] || 0}
+                    </span>
+                  </td>
+                  <td className="p-3 text-xs text-gray-500">
+                    {device.updated_at ? new Date(device.updated_at).toLocaleString() : '-'}
                   </td>
                   <td className="p-3">
                     <div className="flex gap-2">

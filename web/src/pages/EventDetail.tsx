@@ -83,7 +83,9 @@ export function EventDetail() {
           <DetailField label="Tenant ID" value={event.tenant_id} />
           <DetailField label="Site ID" value={event.site_id} />
           <DetailField label="Device ID" value={event.device_id} />
+          <DetailField label="Device Name" value={event.device_name || '-'} />
           <DetailField label="Camera ID" value={event.camera_id} />
+          <DetailField label="Camera Name" value={event.camera_name || '-'} />
           <DetailField label="Event Type" value={event.event_type} />
           <DetailField label="Severity" value={event.severity} />
           <DetailField label="Timestamp (ms)" value={String(event.ts_ms)} />
@@ -98,6 +100,21 @@ export function EventDetail() {
             />
           )}
         </div>
+
+        {/* Video Clip */}
+        {event.clip_url && (
+          <div>
+            <h3 className="text-sm font-medium text-gray-700 mb-2">Video Clip</h3>
+            <a
+              href={event.clip_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 hover:underline text-sm"
+            >
+              {event.clip_url}
+            </a>
+          </div>
+        )}
 
         {/* Acknowledge */}
         <div className="border-t pt-4">

@@ -5,22 +5,46 @@ using ControlCenter.Gateway.Services;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
 
+// Determine data directory - use ProgramData if not in development
+var dataDir = Environment.GetEnvironmentVariable("CONTROLCENTER_DATA_DIR")
+    ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                    "Thingswell", "WindowsPackControlCenter");
+
+if (!Directory.Exists(dataDir))
+    Directory.CreateDirectory(dataDir);
+
+// Ensure logs subdirectory exists
+var logDir = Path.Combine(dataDir, "logs");
+if (!Directory.Exists(logDir))
+    Directory.CreateDirectory(logDir);
+
+var logPath = Path.Combine(logDir, "gateway-.log");
+
 Log.Logger = new LoggerConfiguration()
-    .MinimumLevel.Information()
+    .ReadFrom.Configuration(new ConfigurationBuilder()
+        .AddJsonFile("appsettings.json")
+        .Build())
+    .Enrich.FromLogContext()
     .WriteTo.Console()
-    .WriteTo.File("logs/gateway-.log", rollingInterval: RollingInterval.Day)
+    .WriteTo.File(logPath, rollingInterval: RollingInterval.Day, retainedFileCountLimit: 31)
     .CreateLogger();
 
 try
 {
     Log.Information("Starting Control Center Gateway");
+    Log.Information("Data directory: {DataDir}", dataDir);
 
     var builder = WebApplication.CreateBuilder(args);
 
+    // Override connection string to use data directory for SQLite
+    var dbPath = Path.Combine(dataDir, "controlcenter.db");
+    builder.Configuration["ConnectionStrings:DefaultConnection"] = $"Data Source={dbPath}";
+
     builder.Host.UseSerilog();
 
-    // Configure Kestrel to listen on port 8088
-    builder.WebHost.UseUrls("http://0.0.0.0:8088");
+    // Configure Kestrel URL from appsettings.json (Kestrel:Endpoints:Http:Url)
+    var kestrelUrl = builder.Configuration["Kestrel:Endpoints:Http:Url"] ?? "http://0.0.0.0:8088";
+    builder.WebHost.UseUrls(kestrelUrl);
 
     // Add EF Core SQLite
     builder.Services.AddDbContext<AppDbContext>(options =>
@@ -42,13 +66,37 @@ try
         });
     });
 
+    // Configure MQTT settings from appsettings.json
+    builder.Services.Configure<MqttSettings>(
+        builder.Configuration.GetSection(MqttSettings.SectionName));
+
+    // Configure Camera Status settings from appsettings.json
+    builder.Services.Configure<CameraStatusSettings>(
+        builder.Configuration.GetSection(CameraStatusSettings.SectionName));
+
     // Register background services
     builder.Services.AddSingleton<MqttReceiverService>();
     builder.Services.AddHostedService(sp => sp.GetRequiredService<MqttReceiverService>());
     builder.Services.AddHostedService<EventNormalizerService>();
     builder.Services.AddHostedService<DeviceStatusService>();
+    builder.Services.AddHostedService<CameraStatusService>();
 
     var app = builder.Build();
+
+    // Check if the configured port is already in use
+    var port = new Uri(kestrelUrl.Replace("0.0.0.0", "localhost")).Port;
+    try
+    {
+        using var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Any, port);
+        listener.Start();
+        listener.Stop();
+    }
+    catch (System.Net.Sockets.SocketException)
+    {
+        Log.Fatal("Port {Port} is already in use. Another instance may be running.", port);
+        Environment.ExitCode = 1;
+        return;
+    }
 
     // Ensure database is created
     using (var scope = app.Services.CreateScope())

@@ -24,7 +24,7 @@ public class AppDbContext : DbContext
             entity.HasMany(e => e.Cameras)
                   .WithOne(c => c.Device)
                   .HasForeignKey(c => c.DeviceId)
-                  .OnDelete(DeleteBehavior.SetNull);
+                  .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<Camera>(entity =>
@@ -42,6 +42,8 @@ public class AppDbContext : DbContext
             entity.HasIndex(e => e.EventType);
             entity.HasIndex(e => e.Severity);
             entity.HasIndex(e => e.AckStatus);
+            entity.HasIndex(e => e.TsMs);
+            entity.HasIndex(e => e.SyncStatus);
         });
     }
 }

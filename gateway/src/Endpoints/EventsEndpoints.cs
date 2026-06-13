@@ -1,7 +1,10 @@
 using System.Globalization;
 using ControlCenter.Gateway.Data;
+using ControlCenter.Gateway.Hubs;
 using ControlCenter.Gateway.Models;
 using CsvHelper;
+using MiniExcelLibs;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 
 namespace ControlCenter.Gateway.Endpoints;
@@ -14,6 +17,7 @@ public static class EventsEndpoints
 
         group.MapGet("/", async (
             string? device_id,
+            string? camera_id,
             string? event_type,
             string? severity,
             string? ack_status,
@@ -27,6 +31,9 @@ public static class EventsEndpoints
 
             if (!string.IsNullOrEmpty(device_id))
                 query = query.Where(e => e.DeviceId == device_id);
+
+            if (!string.IsNullOrEmpty(camera_id))
+                query = query.Where(e => e.CameraId == camera_id);
 
             if (!string.IsNullOrEmpty(event_type))
                 query = query.Where(e => e.EventType == event_type);
@@ -75,21 +82,35 @@ public static class EventsEndpoints
             return ev is null ? Results.NotFound() : Results.Ok(ev);
         });
 
-        group.MapPut("/{id}/ack", async (string id, AckRequest request, AppDbContext db) =>
+        group.MapPut("/{id}/ack", async (string id, AckRequest request, AppDbContext db, IHubContext<EventHub> hubContext) =>
         {
             var ev = await db.Events.FindAsync(id);
             if (ev is null)
                 return Results.NotFound();
+
+            // Idempotent: if already confirmed, return current state without modification
+            if (ev.AckStatus == "confirmed")
+                return Results.Ok(ev);
 
             ev.AckStatus = "confirmed";
             ev.AckUser = request.AckUser;
             ev.AckTime = DateTime.UtcNow;
 
             await db.SaveChangesAsync();
+
+            // Broadcast EventAcknowledged via SignalR
+            await hubContext.Clients.All.SendAsync("EventAcknowledged", new
+            {
+                eventId = id,
+                ackStatus = ev.AckStatus,
+                ackUser = ev.AckUser,
+                ackTime = ev.AckTime
+            });
+
             return Results.Ok(ev);
         });
 
-        group.MapPut("/{id}/memo", async (string id, MemoRequest request, AppDbContext db) =>
+        group.MapPut("/{id}/memo", async (string id, MemoRequest request, AppDbContext db, IHubContext<EventHub> hubContext) =>
         {
             var ev = await db.Events.FindAsync(id);
             if (ev is null)
@@ -97,11 +118,20 @@ public static class EventsEndpoints
 
             ev.ActionMemo = request.ActionMemo;
             await db.SaveChangesAsync();
+
+            // Broadcast EventMemoUpdated via SignalR
+            await hubContext.Clients.All.SendAsync("EventMemoUpdated", new
+            {
+                eventId = id,
+                actionMemo = ev.ActionMemo
+            });
+
             return Results.Ok(ev);
         });
 
         group.MapGet("/export/csv", async (
             string? device_id,
+            string? camera_id,
             string? event_type,
             string? severity,
             string? ack_status,
@@ -113,6 +143,9 @@ public static class EventsEndpoints
 
             if (!string.IsNullOrEmpty(device_id))
                 query = query.Where(e => e.DeviceId == device_id);
+
+            if (!string.IsNullOrEmpty(camera_id))
+                query = query.Where(e => e.CameraId == camera_id);
 
             if (!string.IsNullOrEmpty(event_type))
                 query = query.Where(e => e.EventType == event_type);
@@ -146,6 +179,70 @@ public static class EventsEndpoints
                 System.Text.Encoding.UTF8.GetBytes(content),
                 "text/csv",
                 "events_export.csv");
+        });
+
+        group.MapGet("/export/excel", async (
+            string? device_id,
+            string? camera_id,
+            string? event_type,
+            string? severity,
+            string? ack_status,
+            string? start_date,
+            string? end_date,
+            AppDbContext db) =>
+        {
+            var query = db.Events.AsQueryable();
+
+            if (!string.IsNullOrEmpty(device_id))
+                query = query.Where(e => e.DeviceId == device_id);
+            if (!string.IsNullOrEmpty(camera_id))
+                query = query.Where(e => e.CameraId == camera_id);
+            if (!string.IsNullOrEmpty(event_type))
+                query = query.Where(e => e.EventType == event_type);
+            if (!string.IsNullOrEmpty(severity))
+                query = query.Where(e => e.Severity == severity);
+            if (!string.IsNullOrEmpty(ack_status))
+                query = query.Where(e => e.AckStatus == ack_status);
+            if (!string.IsNullOrEmpty(start_date) && DateTime.TryParse(start_date, out var startDt))
+            {
+                var startMs = new DateTimeOffset(startDt.ToUniversalTime()).ToUnixTimeMilliseconds();
+                query = query.Where(e => e.TsMs >= startMs);
+            }
+            if (!string.IsNullOrEmpty(end_date) && DateTime.TryParse(end_date, out var endDt))
+            {
+                var endMs = new DateTimeOffset(endDt.ToUniversalTime()).ToUnixTimeMilliseconds();
+                query = query.Where(e => e.TsMs <= endMs);
+            }
+
+            var events = await query
+                .OrderByDescending(e => e.TsMs)
+                .Take(50000)
+                .Select(e => new
+                {
+                    event_id = e.EventId,
+                    event_type = e.EventType,
+                    severity = e.Severity,
+                    timestamp = e.Timestamp,
+                    device_id = e.DeviceId,
+                    device_name = e.DeviceName,
+                    camera_id = e.CameraId,
+                    camera_name = e.CameraName,
+                    confidence = e.Confidence,
+                    ack_status = e.AckStatus,
+                    ack_user = e.AckUser,
+                    ack_time = e.AckTime,
+                    action_memo = e.ActionMemo
+                })
+                .ToListAsync();
+
+            var stream = new MemoryStream();
+            MiniExcel.SaveAs(stream, events);
+            stream.Position = 0;
+
+            return Results.File(
+                stream,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "events_export.xlsx");
         });
     }
 }

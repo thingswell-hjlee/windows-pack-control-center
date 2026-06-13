@@ -51,8 +51,11 @@ export interface NormalizedEvent {
   schema_version: string;
   tenant_id: string;
   site_id: string;
+  site_name: string | null;
   device_id: string;
+  device_name: string | null;
   camera_id: string;
+  camera_name: string | null;
   event_type: string;
   severity: string;
   timestamp: string;
@@ -61,23 +64,33 @@ export interface NormalizedEvent {
   bbox: BoundingBox | null;
   confidence: number;
   roi_id: string;
+  roi_name: string | null;
   snapshot_url: string;
   clip_url: string;
+  model_version: string | null;
+  edge_app_version: string | null;
   ack_status: string;
   ack_user: string;
   ack_time: string | null;
   action_memo: string;
   sync_status: string;
+  sync_retry_count: number;
+  last_sync_time: string | null;
+  cloud_event_id: string | null;
+  sync_error_message: string | null;
   raw_payload: string;
+  received_at: string;
 }
 
 export interface DashboardSummary {
   total_devices: number;
   online_devices: number;
+  offline_devices: number;
   total_cameras: number;
   online_cameras: number;
   unconfirmed_events: number;
   today_events: number;
+  high_severity_today: number;
 }
 
 export interface PaginatedResponse<T> {
@@ -85,6 +98,7 @@ export interface PaginatedResponse<T> {
   total: number;
   page: number;
   page_size: number;
+  total_pages: number;
 }
 
 export const EventTypes = [

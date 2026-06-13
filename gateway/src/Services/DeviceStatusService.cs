@@ -4,6 +4,7 @@ using ControlCenter.Gateway.Data;
 using ControlCenter.Gateway.Hubs;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace ControlCenter.Gateway.Services;
 
@@ -13,19 +14,21 @@ public class DeviceStatusService : BackgroundService
     private readonly IServiceProvider _serviceProvider;
     private readonly MqttReceiverService _mqttReceiver;
     private readonly IHubContext<EventHub> _hubContext;
+    private readonly MqttSettings _settings;
     private readonly ConcurrentDictionary<string, DateTime> _lastHeartbeat = new();
-    private static readonly TimeSpan HeartbeatTimeout = TimeSpan.FromSeconds(60);
 
     public DeviceStatusService(
         ILogger<DeviceStatusService> logger,
         IServiceProvider serviceProvider,
         MqttReceiverService mqttReceiver,
-        IHubContext<EventHub> hubContext)
+        IHubContext<EventHub> hubContext,
+        IOptions<MqttSettings> mqttSettings)
     {
         _logger = logger;
         _serviceProvider = serviceProvider;
         _mqttReceiver = mqttReceiver;
         _hubContext = hubContext;
+        _settings = mqttSettings.Value;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -56,6 +59,17 @@ public class DeviceStatusService : BackgroundService
     private async Task ProcessStatusMessage(MqttMessage message, CancellationToken stoppingToken)
     {
         var deviceId = message.DeviceId;
+
+        // Check if device is disabled; if so, ignore the status message
+        using var scope = _serviceProvider.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var device = await db.Devices.FindAsync(new object[] { deviceId }, stoppingToken);
+        if (device != null && !device.Enabled)
+        {
+            _logger.LogDebug("Ignoring status message for disabled device {DeviceId}", deviceId);
+            return;
+        }
+
         _lastHeartbeat[deviceId] = DateTime.UtcNow;
 
         string status = "online";
@@ -104,12 +118,27 @@ public class DeviceStatusService : BackgroundService
         {
             try
             {
-                await Task.Delay(TimeSpan.FromSeconds(15), stoppingToken);
+                await Task.Delay(TimeSpan.FromSeconds(_settings.HeartbeatCheckIntervalSeconds), stoppingToken);
 
                 var now = DateTime.UtcNow;
+                var heartbeatTimeout = TimeSpan.FromSeconds(_settings.HeartbeatTimeoutSeconds);
+
+                using var scope = _serviceProvider.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
                 foreach (var (deviceId, lastSeen) in _lastHeartbeat)
                 {
-                    if (now - lastSeen > HeartbeatTimeout)
+                    // Check if device is still enabled before applying timeout
+                    var device = await db.Devices.FindAsync(new object[] { deviceId }, stoppingToken);
+                    if (device != null && !device.Enabled)
+                    {
+                        // Device is disabled; skip heartbeat check and remove from tracking
+                        _lastHeartbeat.TryRemove(deviceId, out _);
+                        _logger.LogDebug("Skipping heartbeat check for disabled device {DeviceId}", deviceId);
+                        continue;
+                    }
+
+                    if (now - lastSeen > heartbeatTimeout)
                     {
                         await UpdateDeviceStatus(deviceId, "offline", stoppingToken);
                         _lastHeartbeat.TryRemove(deviceId, out _);
